@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Consulta Preço - Supermercados Gmais (Preço PDV)</title>
+    <title>Consulta Preço - Supermercados Gmais (Kiosk)</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; user-select: none; }
@@ -13,30 +14,25 @@
 </head>
 <body class="bg-slate-900 text-white h-screen w-screen overflow-hidden flex flex-col justify-between p-8">
 
-    <!-- Header / Brand -->
+    <!-- Header / Brand (Sem link de admin para o cliente) -->
     <header class="flex flex-wrap justify-between items-center bg-slate-800 border border-slate-700 px-8 py-4 rounded-2xl shadow-lg gap-4">
-        <div class="flex items-center space-x-4">
+        <div class="flex items-center space-x-4 cursor-pointer" onclick="handleLogoClick()">
             <div class="bg-blue-600 text-white font-black text-2xl px-5 py-2 rounded-xl shadow">GMAIS</div>
             <div>
                 <h1 class="text-xl font-bold tracking-wide">CONSULTA DE PREÇOS (PDV)</h1>
-                <p class="text-xs text-slate-400">Passe o código de barras no leitor USB OTG</p>
+                <p id="mode-subtitle" class="text-xs text-slate-400">Aproxime o código de barras ou use a câmera</p>
             </div>
         </div>
 
-        <!-- Seletor de Loja do Totem -->
-        <div class="flex items-center space-x-3 bg-slate-900/80 border border-slate-700 px-4 py-2 rounded-xl">
-            <label for="kiosk-store-select" class="text-xs font-bold text-slate-300 uppercase">Loja do Totem:</label>
-            <select id="kiosk-store-select" onchange="onKioskStoreChange()" class="bg-slate-800 text-white text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-600 focus:outline-none focus:border-blue-500">
-                <option value="33168717000104">Loja 001 - Matriz</option>
-            </select>
-        </div>
-
         <div class="flex items-center space-x-4">
-            <a href="/admin" target="_blank" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold px-4 py-2 rounded-lg transition">Painel Admin</a>
             <div id="connection-status" class="flex items-center space-x-2 bg-emerald-500/10 border border-emerald-500/30 px-4 py-2 rounded-full">
                 <span class="h-3 w-3 rounded-full bg-emerald-500 animate-pulse"></span>
                 <span class="text-xs font-semibold text-emerald-400">Online</span>
             </div>
+            <!-- Botão de Configuração (Discreto - engrenagem) -->
+            <button onclick="openConfigModal()" class="bg-slate-700/60 hover:bg-slate-700 text-slate-300 p-2.5 rounded-xl border border-slate-600 transition" title="Configurações do Totem">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            </button>
         </div>
     </header>
 
@@ -45,7 +41,7 @@
 
         <!-- Idle State -->
         <div id="state-idle" class="flex flex-col items-center justify-center text-center space-y-6">
-            <div class="relative bg-slate-800 border-2 border-dashed border-slate-600 p-12 rounded-3xl glow animate-bounce duration-1000">
+            <div class="relative bg-slate-800 border-2 border-dashed border-slate-600 p-12 rounded-3xl glow">
                 <svg class="w-28 h-28 text-blue-400 mx-auto" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5z"></path>
                     <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 6.75h.008v.008H6.75V6.75zm0 9.75h.008v.008H6.75v-.008zm9.75-9.75h.008v.008H16.5V6.75zm-3.75 3.75h.008v.008H12.75v-.008zm0 3h.008v.008H12.75v-.008zm3.75 3.75h.008v.008H16.5v-.008zm3.75-3.75h.008v.008H20.25v-.008z"></path>
@@ -53,7 +49,11 @@
             </div>
             <div>
                 <h2 class="text-3xl font-extrabold tracking-tight">Aproxime o Produto do Leitor</h2>
-                <p class="text-slate-400 text-lg mt-2">O Preço PDV oficial será exibido instantaneamente na tela</p>
+                <p class="text-slate-400 text-lg mt-2">Leitor USB OTG ou Câmera ativos</p>
+            </div>
+            <!-- Container da Câmera (quando o modo câmera estiver ativo) -->
+            <div id="camera-container" class="hidden w-full max-w-md bg-slate-800 border border-slate-700 p-4 rounded-2xl shadow-xl mt-4">
+                <div id="reader" class="w-full rounded-xl overflow-hidden"></div>
             </div>
         </div>
 
@@ -97,12 +97,56 @@
 
     </main>
 
-    <!-- Footer / Debug simulation bar -->
+    <!-- Modal de Configuração do Totem -->
+    <div id="config-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-800 border border-slate-700 w-full max-w-lg rounded-3xl p-8 shadow-2xl space-y-6">
+            <div class="flex justify-between items-center border-b border-slate-700 pb-4">
+                <h3 class="text-xl font-bold text-white flex items-center space-x-2">
+                    <span>⚙️ Configurações do Totem Kiosk</span>
+                </h3>
+                <button onclick="closeConfigModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
+            </div>
+
+            <div class="space-y-4 text-sm">
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Loja / Unidade do Totem (CNPJ)</label>
+                    <select id="config-store-select" class="w-full bg-slate-900 border border-slate-700 text-white px-4 py-3 rounded-xl focus:outline-none focus:border-blue-500 font-semibold">
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Método Principal de Leitura de Código de Barras</label>
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="flex items-center space-x-3 bg-slate-900 border border-slate-700 p-4 rounded-xl cursor-pointer hover:border-blue-500">
+                            <input type="radio" name="scan_method" value="usb" id="method-usb" class="text-blue-600 focus:ring-blue-500">
+                            <div>
+                                <p class="font-bold text-white">Leitor USB OTG</p>
+                                <p class="text-xs text-slate-400">Leitor físico via cabo</p>
+                            </div>
+                        </label>
+                        <label class="flex items-center space-x-3 bg-slate-900 border border-slate-700 p-4 rounded-xl cursor-pointer hover:border-blue-500">
+                            <input type="radio" name="scan_method" value="camera" id="method-camera" class="text-blue-600 focus:ring-blue-500">
+                            <div>
+                                <p class="font-bold text-white">Câmera</p>
+                                <p class="text-xs text-slate-400">Leitura por vídeo</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-end space-x-3 pt-4 border-t border-slate-700">
+                <button onclick="closeConfigModal()" class="bg-slate-700 hover:bg-slate-600 text-white px-5 py-2.5 rounded-xl font-semibold transition">Cancelar</button>
+                <button onclick="saveConfigModal()" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl font-bold transition shadow-lg">Salvar Configurações</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer / Simulação -->
     <footer class="flex justify-between items-center text-xs text-slate-500 border-t border-slate-800 pt-4">
-        <p>Gmais Kiosk v3.5.0 — USB OTG Barcode Scanner Ready</p>
+        <p id="footer-info">Gmais Kiosk v3.9.0 — Modo Kiosk Seguro</p>
         <div class="space-x-2">
             <button onclick="simulateScan('7894900010015')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded border border-slate-700">Simular Coca-Cola 350ml</button>
-            <button onclick="simulateScan('7894900011753')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded border border-slate-700">Simular Coca-Cola 1.5L</button>
         </div>
     </footer>
 
@@ -111,7 +155,21 @@
         let lastKeyTime = Date.now();
         let resetTimer = null;
         let currentStoreCnpj = localStorage.getItem('kiosk_cnpj') || '33168717000104';
-        const deviceId = 'totem_' + Math.random().toString(36.substring(2, 9));
+        let scanMethod = localStorage.getItem('kiosk_method') || 'usb'; // 'usb' ou 'camera'
+        let deviceId = localStorage.getItem('kiosk_device_id') || ('totem_' + Math.random().toString(36).substring(2, 9));
+        localStorage.setItem('kiosk_device_id', deviceId);
+
+        let html5QrCode = null;
+        let logoClickCount = 0;
+
+        function handleLogoClick() {
+            logoClickCount++;
+            if (logoClickCount >= 5) {
+                logoClickCount = 0;
+                openConfigModal();
+            }
+            setTimeout(() => { logoClickCount = 0; }, 3000);
+        }
 
         async function loadStores() {
             try {
@@ -121,19 +179,38 @@
                 stores.forEach(s => {
                     html += `<option value="${s.cnpj}">${s.nome} (${s.cnpj})</option>`;
                 });
-                const sel = document.getElementById('kiosk-store-select');
+                const sel = document.getElementById('config-store-select');
                 if (sel) {
                     sel.innerHTML = html;
                     sel.value = currentStoreCnpj;
                 }
             } catch (err) {
-                console.error("Erro ao carregar lojas no kiosk:", err);
+                console.error("Erro ao carregar lojas:", err);
             }
         }
 
-        function onKioskStoreChange() {
-            currentStoreCnpj = document.getElementById('kiosk-store-select').value;
+        function openConfigModal() {
+            loadStores();
+            document.getElementById('config-store-select').value = currentStoreCnpj;
+            if (scanMethod === 'camera') {
+                document.getElementById('method-camera').checked = true;
+            } else {
+                document.getElementById('method-usb').checked = true;
+            }
+            document.getElementById('config-modal').classList.remove('hidden');
+        }
+
+        function closeConfigModal() {
+            document.getElementById('config-modal').classList.add('hidden');
+        }
+
+        function saveConfigModal() {
+            currentStoreCnpj = document.getElementById('config-store-select').value;
+            scanMethod = document.querySelector('input[name="scan_method"]:checked').value;
             localStorage.setItem('kiosk_cnpj', currentStoreCnpj);
+            localStorage.setItem('kiosk_method', scanMethod);
+            closeConfigModal();
+            applyScanMethod();
             sendHeartbeat();
         }
 
@@ -146,15 +223,16 @@
                         device_id: deviceId,
                         store_cnpj: currentStoreCnpj,
                         ip_address: '127.0.0.1',
-                        app_version: '3.5.0',
+                        app_version: '3.9.0',
                         status: 'online'
                     })
                 });
             } catch (e) {}
         }
 
-        // Barcode scanner listener (USB OTG Keyboard HID mode types characters rapidly ending with Enter)
+        // Listener para Leitor USB OTG (Teclado HID)
         window.addEventListener('keydown', (e) => {
+            if (scanMethod !== 'usb') return;
             const currentTime = Date.now();
 
             if (e.key === 'Enter') {
@@ -174,6 +252,51 @@
                 barcodeBuffer += e.key;
             }
         });
+
+        async function applyScanMethod() {
+            const camContainer = document.getElementById('camera-container');
+            const subtitle = document.getElementById('mode-subtitle');
+
+            if (scanMethod === 'camera') {
+                subtitle.innerText = "Modo Câmera Ativo — Aponte o código para a lente";
+                camContainer.classList.remove('hidden');
+                startCameraScanner();
+            } else {
+                subtitle.innerText = "Aproxime o código de barras do Leitor USB OTG";
+                camContainer.classList.add('hidden');
+                stopCameraScanner();
+            }
+        }
+
+        function startCameraScanner() {
+            if (html5QrCode) return;
+            try {
+                html5QrCode = new Html5Qrcode("reader");
+                html5QrCode.start(
+                    { facingMode: "environment" },
+                    { fps: 10, qrbox: { width: 250, height: 150 } },
+                    (decodedText) => {
+                        processBarcode(decodedText);
+                    },
+                    (errorMessage) => {}
+                ).catch(err => {
+                    console.error("Erro ao iniciar câmera:", err);
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function stopCameraScanner() {
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => {
+                    html5QrCode.clear();
+                    html5QrCode = null;
+                }).catch(err => {
+                    html5QrCode = null;
+                });
+            }
+        }
 
         function showState(stateName) {
             ['idle', 'loading', 'product', 'error'].forEach(s => {
@@ -220,6 +343,9 @@
 
             resetTimer = setTimeout(() => {
                 showState('idle');
+                if (scanMethod === 'camera') {
+                    startCameraScanner();
+                }
             }, 8000);
         }
 
@@ -229,6 +355,7 @@
 
         // Init
         loadStores();
+        applyScanMethod();
         sendHeartbeat();
         setInterval(sendHeartbeat, 30000);
     </script>
