@@ -3,9 +3,11 @@ import time
 import sqlite3
 import logging
 import threading
+import base64
+import gzip
 import requests
 from datetime import datetime
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
@@ -16,7 +18,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("consulta-preco-server")
 
-app = FastAPI(title="Consulta Preço Gmais - Servidor Local Multi-Loja + Painel Admin", version="3.5.0")
+app = FastAPI(title="Consulta Preço Gmais - Servidor Local Multi-Loja + Painel Admin", version="3.6.0")
 
 RP_HOST = os.getenv("RP_HOST", "http://servicosflex.rpinfo.com.br:9000")
 RP_USER = os.getenv("RP_USER", "100049")
@@ -134,7 +136,6 @@ def sync_products_from_erp():
 
                     descricao = item.get("Descricao", item.get("descricao", item.get("nome", item.get("Nome", "PRODUTO"))))
 
-                    # Preço PDV prioritário conforme especificação
                     preco = float(item.get("PrecoPDV", item.get("precoPDV", item.get("Preco", item.get("preco", item.get("precoVenda", item.get("valor", item.get("PrecoVenda", 0.0))))))))
                     if preco == 0.0:
                         preco = float(item.get("PrecoNormal", item.get("precoNormal", item.get("PrecoLista", 0.0))))
@@ -147,7 +148,7 @@ def sync_products_from_erp():
                             preco_anterior = None
 
                     unidade = item.get("UnidadeMedida", item.get("unidadeMedida", item.get("unidade", item.get("Unidade", "UN"))))
-                    imagem_url = item.get("ImagemUrl", item.get("imagemUrl", f"https://via.placeholder.com/400?text={codigo_barras or codigo}"))
+                    imagem_url = f"/api/product-image/{codigo}/{cnpj}"
 
                     ativo_val = item.get("Ativo", item.get("ativo", True))
                     ativo = 1 if (ativo_val is True or ativo_val == 1 or str(ativo_val).lower() == 'true') else 0
@@ -227,7 +228,7 @@ def init_db():
     conn.close()
     logger.info(f"Banco SQLite inicializado em {DB_PATH}.")
 
-# Initialize DB and start sync thread (runs ERP sync immediately to pull real prices)
+# Initialize DB and start sync thread
 init_db()
 threading.Thread(target=sync_products_from_erp, daemon=True).start()
 
@@ -285,6 +286,33 @@ def device_heartbeat(data: dict):
     conn.close()
     return {"status": "ok"}
 
+@app.get("/api/product-image/{codigo}/{cnpj}")
+def get_product_image(codigo: int, cnpj: str):
+    token = get_rp_token()
+    if not token:
+        return Response(status_code=404)
+    headers = {"token": token, "Content-Type": "application/json"}
+    try:
+        url = f"{RP_HOST}/v1.0/produtounidade/{codigo}/unidade/{cnpj}/imagens"
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            prod = data.get("response", {}).get("Produto", {})
+            imagens = prod.get("imagens", [])
+            if imagens and "imagem" in imagens[0]:
+                img_b64 = imagens[0]["imagem"]
+                img_type = imagens[0].get("tipo", "PNG").lower()
+                b = base64.b64decode(img_b64)
+                try:
+                    raw = gzip.decompress(b)
+                except:
+                    raw = b
+                media_type = f"image/{img_type}" if img_type in ["png", "jpeg", "jpg"] else "image/png"
+                return Response(content=raw, media_type=media_type)
+    except Exception as e:
+        logger.error(f"Erro ao buscar imagem do produto {codigo}: {e}")
+    return Response(status_code=404)
+
 @app.get("/api/product/{barcode}")
 def get_product(barcode: str, cnpj: str = None, device_id: str = "unknown"):
     target_cnpj = cnpj if cnpj else ALLOWED_CNPJS[0]
@@ -307,7 +335,7 @@ def get_product(barcode: str, cnpj: str = None, device_id: str = "unknown"):
             "preco": row["preco"],
             "precoAnterior": row["preco_anterior"],
             "unidadeMedida": row["unidade"],
-            "imagemUrl": row["imagem_url"],
+            "imagemUrl": f"/api/product-image/{row['codigo']}/{row['cnpj']}",
             "ativo": bool(row["ativo"])
         }
         log_device_event(device_id, target_cnpj, barcode, "CONSULTA", "SUCESSO", f"Produto: {row['descricao']} - R$ {row['preco']}")
@@ -387,6 +415,9 @@ def admin_search_products(q: str = "", cnpj: str = None):
             """, (f"%{q}%", f"%{q}%", q))
 
     products = [dict(row) for row in cursor.fetchall()]
+    for p in products:
+        p["imagem_url"] = f"/api/product-image/{p['codigo']}/{p['cnpj']}"
+
     conn.close()
     return {"count": len(products), "products": products}
 
