@@ -16,7 +16,7 @@
             <div class="bg-blue-600 text-white font-extrabold text-xl px-4 py-2 rounded-xl">GMAIS</div>
             <div>
                 <h1 class="text-lg font-bold tracking-wide">Painel de Controle Kiosk</h1>
-                <p class="text-xs text-slate-400">Gerenciamento de Servidor Local & Dispositivos — v3.4 (4 Lojas Autorizadas)</p>
+                <p class="text-xs text-slate-400">Gerenciamento de Servidor Local & Dispositivos — v3.5 (4 Lojas Autorizadas)</p>
             </div>
         </div>
 
@@ -118,15 +118,16 @@
                     <table class="w-full text-left text-xs">
                         <thead class="bg-slate-900/60 text-slate-400 uppercase">
                             <tr>
+                                <th class="p-2">Img</th>
                                 <th class="p-2">Cód</th>
                                 <th class="p-2">EAN</th>
                                 <th class="p-2">Descrição</th>
-                                <th class="p-2">Preço (R$)</th>
+                                <th class="p-2">Preço PDV (R$)</th>
                                 <th class="p-2">Loja / CNPJ</th>
                             </tr>
                         </thead>
                         <tbody id="search-results-body" class="divide-y divide-slate-700/50">
-                            <tr><td colspan="5" class="p-4 text-center text-slate-500">Digite algo ou clique em Buscar.</td></tr>
+                            <tr><td colspan="6" class="p-4 text-center text-slate-500">Digite algo ou clique em Buscar.</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -257,6 +258,9 @@
                 if (data.products && data.products.length > 0) {
                     tbody.innerHTML = data.products.map(p => `
                         <tr class="hover:bg-slate-700/40">
+                            <td class="p-2">
+                                <img src="${p.imagem_url || 'https://via.placeholder.com/50?text=IMG'}" alt="Img" class="w-10 h-10 object-contain rounded bg-slate-900/80 p-1 border border-slate-700" onerror="this.src='https://via.placeholder.com/50?text=IMG'">
+                            </td>
                             <td class="p-2 font-mono">${p.codigo}</td>
                             <td class="p-2 font-mono text-blue-400">${p.codigo_barras}</td>
                             <td class="p-2 font-bold">${p.descricao}</td>
@@ -265,7 +269,7 @@
                         </tr>
                     `).join('');
                 } else {
-                    tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-500">Nenhum produto encontrado.</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500">Nenhum produto encontrado.</td></tr>`;
                 }
             } catch (err) {
                 console.error(err);
