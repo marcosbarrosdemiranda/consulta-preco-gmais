@@ -397,7 +397,7 @@ def kiosk_home():
     for p in [os.path.join("server", "static", "index.html"), os.path.join("static", "index.html")]:
         if os.path.exists(p):
             with open(p, "r", encoding="utf-8") as f:
-                return f.read()
+                return HTMLResponse(content=f.read(), headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
     return "index.html não encontrado"
 
 @app.get("/admin", response_class=HTMLResponse)
@@ -405,7 +405,7 @@ def admin_panel():
     for admin_path in [os.path.join("server", "static", "admin.html"), os.path.join("static", "admin.html")]:
         if os.path.exists(admin_path):
             with open(admin_path, "r", encoding="utf-8") as f:
-                return f.read()
+                return HTMLResponse(content=f.read(), headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
     return "Painel admin.html não encontrado"
 
 if os.path.exists("server/static"):
