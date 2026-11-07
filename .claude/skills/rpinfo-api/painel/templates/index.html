@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Painel — Teste de conexão RP Info</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="paginas">
+    <h1>Painel de testes — RP Info</h1>
+    <p class="subtitulo-geral">
+      Ferramenta opcional que acompanha a skill — não é necessária pra ela funcionar, é só um
+      atalho visual. Testes sempre somente leitura; todo resultado fica salvo na aba Histórico.
+    </p>
+
+    <nav class="abas">
+      <button class="aba-botao ativa" data-aba="conexao">Conexão API-Banco</button>
+      <button class="aba-botao" data-aba="negocio">Endpoint de Negócio</button>
+      <button class="aba-botao" data-aba="ofertas">Ofertas por Loja</button>
+      <button class="aba-botao" data-aba="historico">Histórico</button>
+    </nav>
+
+    <section id="aba-conexao" class="aba ativa">
+      <main class="cards">
+        <section class="card">
+          <h2>API REST</h2>
+          <p class="subtitulo"><code>POST /v1.2/auth</code> — autentica e mostra o token (mascarado).</p>
+          <button id="btn-testar-api">Testar API</button>
+          <div id="resultado-api" class="resultado oculto"></div>
+        </section>
+
+        <section class="card">
+          <h2>Postgres (direto)</h2>
+          <p class="subtitulo">Conecta e roda só <code>SELECT version()</code>.</p>
+          {% if bancos %}
+          <label for="banco">Banco</label>
+          <select id="banco">
+            {% for b in bancos %}
+            <option value="{{ b }}">{{ b }}</option>
+            {% endfor %}
+          </select>
+          <button id="btn-testar-banco">Testar banco</button>
+          <div id="resultado-banco" class="resultado oculto"></div>
+          {% else %}
+          <p class="subtitulo">
+            Nenhum banco configurado — defina <code>RPINFO_DB_BANCOS</code> no <code>.env</code>
+            (ver <code>.env.example</code>) pra habilitar esta aba. Acesso direto ao banco é
+            sempre última instância — ver convenção do projeto que instalar esta skill.
+          </p>
+          {% endif %}
+        </section>
+      </main>
+    </section>
+
+    <section id="aba-negocio" class="aba">
+      <main class="cards">
+        <section class="card">
+          <h2>Endpoint de negócio</h2>
+          <p class="subtitulo">
+            <code>GET /v1.6/unidades</code> — autentica, pega o token e chama um endpoint
+            de negócio real (round-trip completo, confirmado ao vivo).
+          </p>
+          <button id="btn-testar-negocio">Testar endpoint</button>
+          <div id="resultado-negocio" class="resultado oculto"></div>
+        </section>
+      </main>
+    </section>
+
+    <section id="aba-ofertas" class="aba">
+      <main class="cards">
+        <section class="card card-larga">
+          <h2>Ofertas por loja</h2>
+          <p class="subtitulo">
+            <code>GET /v1.0/produtounidade/ofertas</code> — ofertas de preço vigentes de uma
+            loja (todas as lojas do cadastro, buscadas ao vivo via <code>/v1.6/unidades</code>).
+          </p>
+          <label for="loja-ofertas">Loja</label>
+          <select id="loja-ofertas">
+            <option value="">Carregando lojas...</option>
+          </select>
+          <label for="departamento-ofertas">Departamento (opcional)</label>
+          <input type="text" id="departamento-ofertas" placeholder="ex.: Mercearia">
+          <label for="setor-ofertas">Setor (opcional)</label>
+          <input type="text" id="setor-ofertas" placeholder="ex.: Bebidas">
+          <label class="checkbox-linha">
+            <input type="checkbox" id="agrupar-ofertas">
+            Agrupar sabores/fragrâncias repetidos (mesmo nome, marca e preço — varia só o código de barras)
+          </label>
+          <button id="btn-testar-ofertas">Buscar ofertas</button>
+          <div id="resultado-ofertas" class="resultado oculto"></div>
+          <div id="tabela-ofertas-wrap"></div>
+        </section>
+      </main>
+    </section>
+
+    <section id="aba-historico" class="aba">
+      <div class="card historico-card">
+        <div class="historico-cabecalho">
+          <h2>Histórico de testes</h2>
+          <button id="btn-atualizar-historico" class="botao-secundario">Atualizar</button>
+        </div>
+        <table id="tabela-historico" class="tabela-historico">
+          <thead>
+            <tr><th>Quando</th><th>Categoria</th><th>Subtipo</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div id="achado-caixa" class="achado-caixa oculto">
+          <h3>Rascunho para <code>reference/pegadinhas.md</code></h3>
+          <textarea id="achado-texto" rows="12" readonly></textarea>
+          <button id="btn-copiar-achado" class="botao-secundario">Copiar</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="/static/script.js"></script>
+</body>
+</html>

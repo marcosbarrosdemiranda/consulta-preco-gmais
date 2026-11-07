@@ -1,0 +1,33 @@
+{
+  "skill_name": "rpinfo-api",
+  "evals": [
+    {
+      "id": 1,
+      "name": "autenticacao-e-consulta-unidades",
+      "prompt": "Preciso conectar na API da RP Info. Meu servidor é http://<host-local>:9000, usuário <seu-usuario>, senha <sua-senha>. Quero autenticar e depois listar as unidades cadastradas. Gere o código Python completo com requests.",
+      "expected_output": "Código Python funcional que autentica via POST /v1.2/auth (não /v1.1/auth, que está depreciado), obtém o token, e usa o header 'token' (não Authorization: Bearer) nas chamadas seguintes. Deve incluir tratamento de erro e verificação de expiração do token (tokenExpiration/expiresIn). Credenciais via variável/argumento, nunca hardcoded no código gerado.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "movimento-produtos-paginacao",
+      "prompt": "Preciso extrair todos os movimentos de produtos de um período usando a API RP Info. Meu token já está autenticado. O endpoint é /v1.9/movimentoprodutos/listarmovimentos/lastid/{lastId}. Monte o código com paginação usando lastId.",
+      "expected_output": "Código Python com paginação incremental usando lastid (começa em 0, usa o maior id do lote retornado como próximo lastid, para quando a lista vier vazia), tratando os formatos de resposta possíveis (array direto, objeto com chave 'movimentos', ou aninhado em 'response.movimentos'). Datas em formato dd-MM-yyyy.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "diagnostico-erro-403",
+      "prompt": "To tentando consultar um endpoint da RP Info mas ta dando 403. Meu token funciona pra outros endpoints. O que pode ser?",
+      "expected_output": "Diagnóstico citando o formato Response_Forbidden (campo 'error' + 'requiredPermission.enableAnyOf'): falta permissão específica daquele endpoint no cadastro de usuários externos do ERP, mesmo com token válido. Sugere habilitar UMA das permissões listadas em enableAnyOf no usuário ou em um grupo dele.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "name": "endpoint-deprecated-ou-inexistente",
+      "prompt": "Minha chamada para /v1.0/produtos/listar?produto=123 sempre cai no except e não retorna nada. O que está errado?",
+      "expected_output": "Identifica que esse path não existe no spec da API (produtos/listar com query param 'produto' não é um endpoint real) e sugere o endpoint correto GET /v1.0/produto/{codigo} (path param), lendo o campo response.produto.grupoNome / grupoCodigo para departamento/grupo do produto.",
+      "files": []
+    }
+  ]
+}
