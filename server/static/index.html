@@ -93,18 +93,26 @@
 
     </main>
 
-    <!-- Modal de Câmera -->
+    <!-- Modal de Câmera / Leitura por Toque -->
     <div id="camera-modal" class="hidden fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6">
         <div class="bg-slate-800 border border-slate-700 w-full max-w-lg rounded-3xl p-6 shadow-2xl space-y-4">
             <div class="flex justify-between items-center border-b border-slate-700 pb-3">
-                <h3 class="text-lg font-bold text-white">📷 Câmera para Leitura</h3>
+                <h3 class="text-lg font-bold text-white">📷 Câmera / Entrada por Toque</h3>
                 <button onclick="closeCameraModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
             </div>
-            <div id="camera-error" class="hidden bg-red-950/40 border border-red-500/50 p-4 rounded-xl text-xs text-red-300 text-center">
-                A câmera requer HTTPS ou localhost para funcionar no navegador/WebView. Certifique-se de conceder permissão.
+            <div id="camera-error" class="hidden bg-yellow-950/40 border border-yellow-500/50 p-3 rounded-xl text-xs text-yellow-300 text-center">
+                A câmera via navegador HTTP requer HTTPS. Use o campo abaixo para inserir o código de barras:
             </div>
-            <div id="reader" class="w-full h-72 rounded-2xl overflow-hidden bg-slate-900 border border-slate-700"></div>
-            <p class="text-xs text-slate-400 text-center">Aponte o código de barras para a lente da câmera</p>
+            <div id="reader" class="w-full h-56 rounded-2xl overflow-hidden bg-slate-900 border border-slate-700"></div>
+
+            <!-- Campo de Entrada Manual de Código de Barras -->
+            <div class="space-y-2 pt-2">
+                <label class="text-xs font-bold text-slate-400 uppercase">Digite o Código de Barras:</label>
+                <div class="flex space-x-2">
+                    <input type="text" id="manual-barcode-input" placeholder="Ex: 7891000..." class="flex-grow bg-slate-900 border border-slate-700 px-4 py-3 rounded-xl text-white focus:outline-none focus:border-blue-500 font-bold text-lg">
+                    <button onclick="submitManualBarcode()" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl font-bold transition">Consultar</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -173,7 +181,7 @@
 
     <!-- Footer -->
     <footer class="flex justify-between items-center text-xs text-slate-500 border-t border-slate-800 pt-4">
-        <p>Gmais Kiosk v3.9.6 — Modo Kiosk Seguro</p>
+        <p>Gmais Kiosk v3.9.7 — Modo Kiosk Seguro</p>
         <div class="space-x-2">
             <button onclick="simulateScan('7894900010015')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded border border-slate-700">Simular Coca-Cola</button>
         </div>
@@ -184,8 +192,8 @@
         let lastKeyTime = Date.now();
         let resetTimer = null;
         let currentStoreCnpj = localStorage.getItem('kiosk_cnpj') || '33168717000104';
-        let scanMethod = localStorage.getItem('kiosk_method') || 'usb'; // 'usb' ou 'camera'
-        let orientationMode = localStorage.getItem('kiosk_orientation') || 'paisagem'; // 'paisagem' ou 'retrato'
+        let scanMethod = localStorage.getItem('kiosk_method') || 'usb';
+        let orientationMode = localStorage.getItem('kiosk_orientation') || 'paisagem';
         let deviceId = localStorage.getItem('kiosk_device_id') || ('totem_' + Math.random().toString(36).substring(2, 9));
         localStorage.setItem('kiosk_device_id', deviceId);
 
@@ -248,28 +256,24 @@
             localStorage.setItem('kiosk_method', scanMethod);
             localStorage.setItem('kiosk_orientation', orientationMode);
 
+            // Comunicar com o app Android nativo para alterar a orientação da tela via Bridge
+            if (window.AndroidBridge && window.AndroidBridge.setOrientation) {
+                try {
+                    window.AndroidBridge.setOrientation(orientationMode);
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+
             closeConfigModal();
             applySettings();
             sendHeartbeat();
         }
 
         function applySettings() {
-            const body = document.getElementById('kiosk-body');
             const instruction = document.getElementById('idle-instruction');
-
-            if (orientationMode === 'retrato') {
-                body.style.transform = 'none';
-                body.style.width = '100vw';
-                body.style.height = '100vh';
-                // Em modo retrato mantemos o layout vertical natural
-            } else {
-                body.style.transform = 'none';
-                body.style.width = '100vw';
-                body.style.height = '100vh';
-            }
-
             if (scanMethod === 'camera') {
-                instruction.innerText = "Toque na tela para abrir a Câmera e ler o código";
+                instruction.innerText = "Toque na tela para abrir a Leitura e Câmera";
             } else {
                 instruction.innerText = "Leitor USB OTG ativo — Aproxime o produto";
             }
@@ -283,15 +287,25 @@
 
         function openCameraModal() {
             document.getElementById('camera-error').classList.add('hidden');
+            document.getElementById('manual-barcode-input').value = '';
             document.getElementById('camera-modal').classList.remove('hidden');
             setTimeout(() => {
                 startCameraScanner();
+                document.getElementById('manual-barcode-input').focus();
             }, 400);
         }
 
         function closeCameraModal() {
             stopCameraScanner();
             document.getElementById('camera-modal').classList.add('hidden');
+        }
+
+        function submitManualBarcode() {
+            const val = document.getElementById('manual-barcode-input').value.trim();
+            if (val.length > 0) {
+                closeCameraModal();
+                processBarcode(val);
+            }
         }
 
         function startCameraScanner() {
@@ -336,14 +350,13 @@
                         device_id: deviceId,
                         store_cnpj: currentStoreCnpj,
                         ip_address: '127.0.0.1',
-                        app_version: '3.9.6',
+                        app_version: '3.9.7',
                         status: 'online'
                     })
                 });
             } catch (e) {}
         }
 
-        // Listener para Leitor USB OTG (Teclado HID)
         window.addEventListener('keydown', (e) => {
             if (scanMethod !== 'usb') return;
             const currentTime = Date.now();
@@ -418,7 +431,6 @@
             processBarcode(barcode);
         }
 
-        // Init
         loadStores();
         applySettings();
         sendHeartbeat();
