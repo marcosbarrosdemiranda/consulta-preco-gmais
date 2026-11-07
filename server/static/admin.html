@@ -16,7 +16,7 @@
             <div class="bg-blue-600 text-white font-extrabold text-xl px-4 py-2 rounded-xl">GMAIS</div>
             <div>
                 <h1 class="text-lg font-bold tracking-wide">Painel de Controle Kiosk</h1>
-                <p class="text-xs text-slate-400">Gerenciamento de Servidor Local & Dispositivos</p>
+                <p class="text-xs text-slate-400">Gerenciamento de Servidor Local & Dispositivos — v3.4 (4 Lojas Autorizadas)</p>
             </div>
         </div>
 
@@ -164,8 +164,9 @@
 
         async function loadStores() {
             try {
-                const res = await fetch('/api/admin/stores');
+                const res = await fetch('/api/admin/stores?_t=' + Date.now());
                 const stores = await res.json();
+                console.log("Lojas carregadas:", stores);
 
                 let html = '<option value="all">Todas as Lojas (Comparativo)</option>';
                 stores.forEach(s => {
