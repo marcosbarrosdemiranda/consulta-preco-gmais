@@ -114,20 +114,31 @@
                     <input id="search-input" type="text" placeholder="Digite nome, EAN (ex: 7894900010015) ou código..." class="flex-grow bg-slate-900 border border-slate-700 px-4 py-2 rounded-xl text-sm focus:outline-none focus:border-blue-500" onkeydown="if(event.key==='Enter') searchProducts()">
                     <button onclick="searchProducts()" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-xl text-sm font-semibold">Buscar</button>
                 </div>
+
+                <!-- Product Preview Card (Large Image) -->
+                <div id="product-preview-container" class="hidden mb-4 bg-slate-900/90 border border-slate-700 rounded-2xl p-4 flex items-center space-x-4 shadow-lg">
+                    <img id="preview-img" src="" alt="Produto" class="w-24 h-24 object-contain rounded-xl bg-slate-800 p-1 border border-slate-700" onerror="this.src='https://via.placeholder.com/150?text=Produto'">
+                    <div class="flex-grow">
+                        <div class="flex items-center space-x-2">
+                            <span id="preview-code" class="bg-blue-500/20 text-blue-400 text-xs font-bold px-2.5 py-0.5 rounded-full border border-blue-500/30">CÓD: 0</span>
+                            <span id="preview-ean" class="font-mono text-xs text-slate-400">EAN: 0</span>
+                        </div>
+                        <h3 id="preview-name" class="text-base font-black text-white mt-2">Nome do Produto</h3>
+                    </div>
+                </div>
+
                 <div class="overflow-x-auto flex-grow max-h-60 overflow-y-auto">
                     <table class="w-full text-left text-xs">
-                        <thead class="bg-slate-900/60 text-slate-400 uppercase">
+                        <thead class="bg-slate-900/60 text-slate-400 uppercase sticky top-0">
                             <tr>
-                                <th class="p-2">Img</th>
-                                <th class="p-2">Cód</th>
-                                <th class="p-2">EAN</th>
-                                <th class="p-2">Descrição</th>
-                                <th class="p-2">Preço PDV (R$)</th>
-                                <th class="p-2">Loja / CNPJ</th>
+                                <th class="p-2.5">Loja / CNPJ</th>
+                                <th class="p-2.5">Código</th>
+                                <th class="p-2.5">Unidade</th>
+                                <th class="p-2.5 text-right">Preço PDV (R$)</th>
                             </tr>
                         </thead>
                         <tbody id="search-results-body" class="divide-y divide-slate-700/50">
-                            <tr><td colspan="6" class="p-4 text-center text-slate-500">Digite algo ou clique em Buscar.</td></tr>
+                            <tr><td colspan="4" class="p-4 text-center text-slate-500">Digite algo ou clique em Buscar.</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -250,26 +261,32 @@
             const query = document.getElementById('search-input').value;
             const storeCnpj = document.getElementById('search-store-select').value;
             const tbody = document.getElementById('search-results-body');
+            const previewContainer = document.getElementById('product-preview-container');
+
             try {
                 const url = `/api/admin/products/search?q=${encodeURIComponent(query)}&cnpj=${storeCnpj}`;
                 const res = await fetch(url);
                 const data = await res.json();
 
                 if (data.products && data.products.length > 0) {
+                    const first = data.products[0];
+                    document.getElementById('preview-img').src = first.imagem_url || 'https://via.placeholder.com/150?text=Produto';
+                    document.getElementById('preview-code').innerText = `CÓD: ${first.codigo}`;
+                    document.getElementById('preview-ean').innerText = `EAN: ${first.codigo_barras}`;
+                    document.getElementById('preview-name').innerText = first.descricao;
+                    previewContainer.classList.remove('hidden');
+
                     tbody.innerHTML = data.products.map(p => `
                         <tr class="hover:bg-slate-700/40">
-                            <td class="p-2">
-                                <img src="${p.imagem_url || 'https://via.placeholder.com/50?text=IMG'}" alt="Img" class="w-10 h-10 object-contain rounded bg-slate-900/80 p-1 border border-slate-700" onerror="this.src='https://via.placeholder.com/50?text=IMG'">
-                            </td>
-                            <td class="p-2 font-mono">${p.codigo}</td>
-                            <td class="p-2 font-mono text-blue-400">${p.codigo_barras}</td>
-                            <td class="p-2 font-bold">${p.descricao}</td>
-                            <td class="p-2 text-emerald-400 font-bold text-sm">R$ ${p.preco.toFixed(2).replace('.', ',')}</td>
-                            <td class="p-2 font-mono text-slate-300 font-semibold">${p.cnpj}</td>
+                            <td class="p-2.5 font-mono font-semibold text-slate-300">${p.cnpj}</td>
+                            <td class="p-2.5 font-mono">${p.codigo}</td>
+                            <td class="p-2.5">${p.unidade || 'UN'}</td>
+                            <td class="p-2.5 text-right text-emerald-400 font-bold text-sm">R$ ${p.preco.toFixed(2).replace('.', ',')}</td>
                         </tr>
                     `).join('');
                 } else {
-                    tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-500">Nenhum produto encontrado.</td></tr>`;
+                    previewContainer.classList.add('hidden');
+                    tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-slate-500">Nenhum produto encontrado.</td></tr>`;
                 }
             } catch (err) {
                 console.error(err);
