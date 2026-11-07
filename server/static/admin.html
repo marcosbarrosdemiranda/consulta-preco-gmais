@@ -23,7 +23,7 @@
         <!-- Seletor de Loja Global -->
         <div class="flex items-center space-x-3 bg-slate-900/80 border border-slate-700 px-4 py-2 rounded-xl">
             <label for="global-store-select" class="text-xs font-bold text-slate-300 uppercase">Loja / Unidade:</label>
-            <select id="global-store-select" onchange="onStoreChange()" class="bg-slate-800 text-white text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-600 focus:outline-none focus:border-blue-500">
+            <select id="global-store-select" onchange="onGlobalStoreChange()" class="bg-slate-800 text-white text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-600 focus:outline-none focus:border-blue-500">
                 <option value="all">Todas as Lojas</option>
             </select>
         </div>
@@ -101,7 +101,15 @@
 
             <!-- Consulta Direta ao Banco Local -->
             <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow flex flex-col">
-                <h2 class="text-lg font-bold text-white mb-4">Consulta Direta ao Cache Local (Verificar Preços)</h2>
+                <div class="flex flex-wrap justify-between items-center mb-4 gap-2">
+                    <h2 class="text-lg font-bold text-white">Consulta Direta (Comparativo por Loja)</h2>
+                    <div class="flex items-center space-x-2">
+                        <label for="search-store-select" class="text-xs font-semibold text-slate-400">Filtrar Loja:</label>
+                        <select id="search-store-select" onchange="searchProducts()" class="bg-slate-900 text-white text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-700 focus:outline-none focus:border-blue-500">
+                            <option value="all">Todas as Lojas (Comparativo)</option>
+                        </select>
+                    </div>
+                </div>
                 <div class="flex space-x-2 mb-4">
                     <input id="search-input" type="text" placeholder="Digite nome, EAN (ex: 7894900010015) ou código..." class="flex-grow bg-slate-900 border border-slate-700 px-4 py-2 rounded-xl text-sm focus:outline-none focus:border-blue-500" onkeydown="if(event.key==='Enter') searchProducts()">
                     <button onclick="searchProducts()" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-xl text-sm font-semibold">Buscar</button>
@@ -114,7 +122,7 @@
                                 <th class="p-2">EAN</th>
                                 <th class="p-2">Descrição</th>
                                 <th class="p-2">Preço (R$)</th>
-                                <th class="p-2">Loja (CNPJ)</th>
+                                <th class="p-2">Loja / CNPJ</th>
                             </tr>
                         </thead>
                         <tbody id="search-results-body" class="divide-y divide-slate-700/50">
@@ -158,21 +166,21 @@
             try {
                 const res = await fetch('/api/admin/stores');
                 const stores = await res.json();
-                const select = document.getElementById('global-store-select');
 
-                let html = '<option value="all">Todas as Lojas</option>';
+                let html = '<option value="all">Todas as Lojas (Comparativo)</option>';
                 stores.forEach(s => {
                     html += `<option value="${s.cnpj}">${s.nome} (${s.cnpj})</option>`;
                 });
-                select.innerHTML = html;
+
+                document.getElementById('global-store-select').innerHTML = html;
+                document.getElementById('search-store-select').innerHTML = html;
             } catch (err) {
                 console.error("Erro ao carregar lojas:", err);
             }
         }
 
-        function onStoreChange() {
+        function onGlobalStoreChange() {
             selectedStore = document.getElementById('global-store-select').value;
-            searchProducts();
             loadDashboard();
         }
 
@@ -193,7 +201,6 @@
                 const devices = await devicesRes.json();
                 const devTable = document.getElementById('devices-table-body');
 
-                // Filtra por loja selecionada se não for 'all'
                 const filteredDevices = selectedStore === 'all' ? devices : devices.filter(d => d.store_cnpj === selectedStore);
                 document.getElementById('badge-devices-count').innerText = `${filteredDevices.length} conectados`;
 
@@ -239,9 +246,10 @@
 
         async function searchProducts() {
             const query = document.getElementById('search-input').value;
+            const storeCnpj = document.getElementById('search-store-select').value;
             const tbody = document.getElementById('search-results-body');
             try {
-                const url = `/api/admin/products/search?q=${encodeURIComponent(query)}&cnpj=${selectedStore}`;
+                const url = `/api/admin/products/search?q=${encodeURIComponent(query)}&cnpj=${storeCnpj}`;
                 const res = await fetch(url);
                 const data = await res.json();
 
@@ -251,8 +259,8 @@
                             <td class="p-2 font-mono">${p.codigo}</td>
                             <td class="p-2 font-mono text-blue-400">${p.codigo_barras}</td>
                             <td class="p-2 font-bold">${p.descricao}</td>
-                            <td class="p-2 text-emerald-400 font-bold">R$ ${p.preco.toFixed(2).replace('.', ',')}</td>
-                            <td class="p-2 font-mono text-slate-400">${p.cnpj}</td>
+                            <td class="p-2 text-emerald-400 font-bold text-sm">R$ ${p.preco.toFixed(2).replace('.', ',')}</td>
+                            <td class="p-2 font-mono text-slate-300 font-semibold">${p.cnpj}</td>
                         </tr>
                     `).join('');
                 } else {
