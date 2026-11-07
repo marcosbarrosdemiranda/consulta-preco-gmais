@@ -12,8 +12,8 @@ import androidx.appcompat.app.AppCompatActivity
 class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
-    // Altere para o IP do seu servidor local rodando no Docker (ex: http://192.168.1.10:48291)
-    private val serverUrl = "http://192.168.1.4:48291"
+    // IP atual do servidor Docker nesta máquina
+    private val serverUrl = "http://192.168.20.108:48291"
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
