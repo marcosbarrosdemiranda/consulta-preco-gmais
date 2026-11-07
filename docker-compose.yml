@@ -1,0 +1,15 @@
+services:
+  consulta-preco-server:
+    build: ./server
+    container_name: consulta-preco-gmais-server
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./server/data:/app/data
+    environment:
+      - RP_HOST=${RP_HOST:-http://192.168.1.4:9000}
+      - RP_USER=${RP_USER:-100049}
+      - RP_PASS=${RP_PASS:-gr142536}
+      - RP_CNPJ=${RP_CNPJ:-00000000000000}
+      - SYNC_INTERVAL_MINUTES=${SYNC_INTERVAL_MINUTES:-10}
+    restart: unless-stopped

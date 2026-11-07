@@ -23,7 +23,10 @@ RP_PASS = os.getenv("RP_PASS", "gr142536")
 RP_CNPJ = os.getenv("RP_CNPJ", "00000000000000")
 SYNC_INTERVAL_MINUTES = int(os.getenv("SYNC_INTERVAL_MINUTES", "10"))
 
-DB_PATH = "produtos.db"
+# Diretório e arquivo de banco de dados SQLite local
+DATA_DIR = "/app/data" if os.path.exists("/app") else "data"
+os.makedirs(DATA_DIR, exist_ok=True)
+DB_PATH = os.path.join(DATA_DIR, "produtos.db")
 
 # Estado global da sincronização
 sync_status = {
@@ -53,7 +56,7 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_barras ON produtos(codigo_barras)")
     conn.commit()
     conn.close()
-    logger.info("Banco de dados SQLite local inicializado com sucesso.")
+    logger.info(f"Banco de dados SQLite local inicializado em {DB_PATH}.")
 
 init_db()
 
@@ -109,7 +112,6 @@ def sync_products_from_erp():
 
             resp = requests.get(url, headers=headers, timeout=30)
             if resp.status_code == 401:
-                # Renova token se expirado
                 token = get_rp_token()
                 if token:
                     headers["token"] = token
@@ -123,7 +125,6 @@ def sync_products_from_erp():
 
             data = resp.json()
 
-            # Normaliza formatos de resposta da API RP Info
             batch = []
             if isinstance(data, list):
                 batch = data
@@ -142,21 +143,17 @@ def sync_products_from_erp():
                 if not codigo:
                     continue
 
-                # Extrai código de barras principal ou alternativo
                 codigo_barras = item.get("codigoBarras", item.get("codBarras", ""))
                 if not codigo_barras and "codigosBarras" in item and item["codigosBarras"]:
                     codigo_barras = item["codigosBarras"][0].get("codigoBarras", "")
 
                 descricao = item.get("descricao", item.get("nome", "PRODUTO SEM DESCRIÇÃO"))
-
-                # Preço PDV (Preço Venda / Preço 2 / Preço)
                 preco = float(item.get("preco", item.get("precoVenda", item.get("valor", item.get("preco2", 0.0)))))
                 preco_anterior = item.get("precoAnterior", None)
                 unidade = item.get("unidadeMedida", item.get("unidade", "UN"))
                 imagem_url = item.get("imagemUrl", f"https://via.placeholder.com/400?text={codigo_barras or codigo}")
                 ativo = 1 if item.get("ativo", True) else 0
 
-                # Salva no SQLite local
                 cursor.execute("""
                     INSERT OR REPLACE INTO produtos (codigo, codigo_barras, descricao, preco, preco_anterior, unidade, imagem_url, ativo, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -166,15 +163,12 @@ def sync_products_from_erp():
 
             conn.commit()
 
-            # Atualiza lastID para paginação com base no último item do lote
             last_item = batch[-1]
             next_id = last_item.get("codigo", last_item.get("id"))
             if next_id == last_id:
-                # Evita loop infinito se o lastID não avançar
                 break
             last_id = next_id
 
-            # Pequena pausa para aliviar a retaguarda
             time.sleep(0.1)
 
         sync_status["last_sync"] = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
@@ -196,10 +190,9 @@ def background_scheduler():
         except Exception as e:
             logger.error(f"Erro no agendador de sincronização: {e}")
 
-        # Aguarda o intervalo configurado (padrão 10 minutos = 600 segundos)
         time.sleep(SYNC_INTERVAL_MINUTES * 60)
 
-# Inicia a thread de sincronização em background ao subir o app
+# Inicia a thread de sincronização em background
 threading.Thread(target=background_scheduler, daemon=True).start()
 
 @app.get("/api/health")
@@ -214,7 +207,7 @@ def health_check():
 
 @app.post("/api/sync/trigger")
 def trigger_sync(background_tasks: BackgroundTasks):
-    """Força uma sincronização manual imediata em background."""
+    """Força sincronização manual imediata."""
     if sync_status["is_syncing"]:
         return {"status": "running", "message": "Sincronização já está em andamento."}
 
@@ -223,12 +216,11 @@ def trigger_sync(background_tasks: BackgroundTasks):
 
 @app.get("/api/product/{barcode}")
 def get_product(barcode: str):
-    """Consulta ultrarrápida do produto no banco de dados local SQLite (cache sincronizado)."""
+    """Consulta ultrarrápida no SQLite local."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    # Busca por código de barras exato ou código interno
     cursor.execute("""
         SELECT * FROM produtos
         WHERE codigo_barras = ? OR codigo = ? OR codigo_barras LIKE ?
@@ -251,24 +243,10 @@ def get_product(barcode: str):
         }
         return {"status": "ok", "source": "cache_local", "product": product_data}
 
-    # Fallback opcional: Se não estiver no cache local, tenta consultar diretamente na API da RP Info
-    logger.warning( produto {barcode} não encontrado no cache local. Tentando busca direta na API RP Info...)
-    token = get_rp_token()
-    if token:
-        try:
-            url = f"{RP_HOST}/v2.8/produtounidade/{barcode}/unidade/{RP_CNPJ}/consultarcodigobarras"
-            headers = {"token": token, "Content-Type": "application/json"}
-            resp = requests.get(url, headers=headers, timeout=5)
-            if resp.status_code == 200:
-                data = resp.json()
-                # Processa resposta direta...
-                # (retorna produto encontrado ao vivo)
-        except Exception as e:
-            logger.error(f"Erro no fallback de consulta direta: {e}")
+    logger.warning(f"Produto {barcode} não encontrado no cache local.")
+    return {"status": "not_found", "message": "Produto não encontrado no cache local."}
 
-    return {"status": "not_found", "message": "Produto não encontrado no cache local nem na retaguarda."}
-
-# Servir arquivos estáticos do frontend Kiosk
+# Servir frontend estático
 if os.path.exists("server/static"):
     app.mount("/", StaticFiles(directory="server/static", html=True), name="static")
 else:
