@@ -16,7 +16,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("consulta-preco-server")
 
-app = FastAPI(title="Consulta Preço Gmais - Servidor Local Multi-Loja + Painel Admin", version="3.4.0")
+app = FastAPI(title="Consulta Preço Gmais - Servidor Local Multi-Loja + Painel Admin", version="3.5.0")
 
 RP_HOST = os.getenv("RP_HOST", "http://servicosflex.rpinfo.com.br:9000")
 RP_USER = os.getenv("RP_USER", "100049")
@@ -63,10 +63,10 @@ def get_sales_units():
                 data = resp.json()
                 content = data.get("response", {}).get("content", data.get("unidades", []))
                 for u in content:
-                    cnpj = str(u.get("cnpj", ""))
-                    nome = u.get("nome", u.get("nomeReduzido", f"Loja {cnpj}"))
+                    cnpj = str(u.get("cnpj", u.get("CNPJ", "")))
+                    nome = u.get("nome", u.get("Nome", u.get("nomeReduzido", f"Loja {cnpj}")))
                     if cnpj in ALLOWED_CNPJS:
-                        sales_stores.append({"cnpj": cnpj, "nome": nome, "codigo": u.get("codigo", "")})
+                        sales_stores.append({"cnpj": cnpj, "nome": nome, "codigo": u.get("codigo", u.get("Codigo", ""))})
         except Exception:
             pass
     if not sales_stores:
@@ -107,14 +107,14 @@ def sync_products_from_erp():
             while True:
                 url = f"{RP_HOST}/v3.2/produtounidade/listaprodutos/{last_id}/unidade/{cnpj}/detalhado/ativos"
                 try:
-                    resp = requests.get(url, headers=headers, timeout=10)
+                    resp = requests.get(url, headers=headers, timeout=15)
                 except Exception:
                     break
                 if resp.status_code == 401:
                     token = get_rp_token()
                     if token:
                         headers["token"] = token
-                        resp = requests.get(url, headers=headers, timeout=10)
+                        resp = requests.get(url, headers=headers, timeout=15)
                     else:
                         break
                 if resp.status_code != 200:
@@ -125,18 +125,32 @@ def sync_products_from_erp():
                     break
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 for item in batch:
-                    codigo = item.get("codigo", item.get("id"))
+                    codigo = item.get("Codigo", item.get("codigo", item.get("id", item.get("ID"))))
                     if not codigo:
                         continue
-                    codigo_barras = item.get("codigoBarras", item.get("codBarras", ""))
+                    codigo_barras = item.get("CodigoBarras", item.get("codigoBarras", item.get("codBarras", "")))
                     if not codigo_barras and "codigosBarras" in item and item["codigosBarras"]:
-                        codigo_barras = item["codigosBarras"][0].get("codigoBarras", "")
-                    descricao = item.get("descricao", item.get("nome", "PRODUTO"))
-                    preco = float(item.get("preco", item.get("precoVenda", item.get("valor", 0.0))))
-                    preco_anterior = item.get("precoAnterior", None)
-                    unidade = item.get("unidadeMedida", item.get("unidade", "UN"))
-                    imagem_url = item.get("imagemUrl", f"https://via.placeholder.com/400?text={codigo_barras or codigo}")
-                    ativo = 1 if item.get("ativo", True) else 0
+                        codigo_barras = item["codigosBarras"][0].get("codigoBarras", item["codigosBarras"][0].get("CodigoBarras", ""))
+
+                    descricao = item.get("Descricao", item.get("descricao", item.get("nome", item.get("Nome", "PRODUTO"))))
+
+                    # Preço PDV prioritário conforme especificação
+                    preco = float(item.get("PrecoPDV", item.get("precoPDV", item.get("Preco", item.get("preco", item.get("precoVenda", item.get("valor", item.get("PrecoVenda", 0.0))))))))
+                    if preco == 0.0:
+                        preco = float(item.get("PrecoNormal", item.get("precoNormal", item.get("PrecoLista", 0.0))))
+
+                    preco_anterior = item.get("PrVendaAnt", item.get("prVendaAnt", item.get("PrecoAnterior", item.get("precoAnterior", None))))
+                    if preco_anterior is not None:
+                        try:
+                            preco_anterior = float(preco_anterior)
+                        except:
+                            preco_anterior = None
+
+                    unidade = item.get("UnidadeMedida", item.get("unidadeMedida", item.get("unidade", item.get("Unidade", "UN"))))
+                    imagem_url = item.get("ImagemUrl", item.get("imagemUrl", f"https://via.placeholder.com/400?text={codigo_barras or codigo}"))
+
+                    ativo_val = item.get("Ativo", item.get("ativo", True))
+                    ativo = 1 if (ativo_val is True or ativo_val == 1 or str(ativo_val).lower() == 'true') else 0
 
                     cursor.execute("""
                         INSERT OR REPLACE INTO produtos (codigo, cnpj, codigo_barras, descricao, preco, preco_anterior, unidade, imagem_url, ativo, updated_at)
@@ -145,7 +159,7 @@ def sync_products_from_erp():
                     total_unidade += 1
                 conn.commit()
                 last_item = batch[-1]
-                next_id = last_item.get("codigo", last_item.get("id"))
+                next_id = last_item.get("Codigo", last_item.get("codigo", last_item.get("id", last_item.get("ID"))))
                 if next_id == last_id:
                     break
                 last_id = next_id
@@ -210,31 +224,10 @@ def init_db():
     # Remove unauthorized CNPJs from database
     cursor.execute("DELETE FROM produtos WHERE cnpj NOT IN ('33168717000104', '33168717000449', '33168717000368', '33168717000791')")
     conn.commit()
-
-    # Seed products if empty
-    cursor.execute("SELECT COUNT(*) FROM produtos")
-    if cursor.fetchone()[0] == 0:
-        logger.info("Banco vazio detectado. Inserindo produtos de exemplo (seed)...")
-        sample_products = [
-            (100099, "33168717000104", "7894900010015", "Refrigerante Coca Cola 350ml", 4.99, 5.49, "UN", "https://via.placeholder.com/400?text=Coca-Cola+350ml", 1),
-            (100100, "33168717000104", "7891000123456", "Cerveja Skol 350ml Lata", 4.49, 4.99, "UN", "https://via.placeholder.com/400?text=Cerveja+Skol", 1),
-            (100099, "33168717000449", "7894900010015", "Refrigerante Coca Cola 350ml (Loja 003)", 4.89, 5.39, "UN", "https://via.placeholder.com/400?text=Coca-Cola+Loja003", 1),
-            (100099, "33168717000368", "7894900010015", "Refrigerante Coca Cola 350ml (Loja 010)", 4.79, 5.29, "UN", "https://via.placeholder.com/400?text=Coca-Cola+Loja010", 1),
-            (100099, "33168717000791", "7894900010015", "Refrigerante Coca Cola 350ml (Loja 030)", 4.99, 5.49, "UN", "https://via.placeholder.com/400?text=Coca-Cola+Loja030", 1)
-        ]
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        for p in sample_products:
-            cursor.execute("""
-                INSERT OR REPLACE INTO produtos (codigo, cnpj, codigo_barras, descricao, preco, preco_anterior, unidade, imagem_url, ativo, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (*p, now_str))
-        conn.commit()
-        logger.info("Produtos de exemplo inseridos com sucesso.")
-
     conn.close()
     logger.info(f"Banco SQLite inicializado em {DB_PATH}.")
 
-# Initialize DB and start sync thread
+# Initialize DB and start sync thread (runs ERP sync immediately to pull real prices)
 init_db()
 threading.Thread(target=sync_products_from_erp, daemon=True).start()
 
