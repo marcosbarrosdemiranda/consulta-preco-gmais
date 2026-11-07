@@ -89,14 +89,11 @@ def init_db():
     if cursor.fetchone()[0] == 0:
         logger.info("Banco vazio detectado. Inserindo produtos de exemplo (seed)...")
         sample_products = [
-            (1001, "00000000000000", "7894900010015", "REFRIGERANTE COCA-COLA 2L PET (Loja Matriz)", 9.99, 11.49, "UN", "https://via.placeholder.com/400?text=Coca-Cola+2L", 1),
-            (1002, "00000000000000", "7891000123456", "CERVEJA SKOL 350ML LATA", 4.49, 4.99, "UN", "https://via.placeholder.com/400?text=Cerveja+Skol", 1),
-            (1003, "00000000000000", "7896004710123", "LEITE INTEGRAL PARMALAT 1L", 6.89, 7.29, "UN", "https://via.placeholder.com/400?text=Leite+Parmalat", 1),
-            (1004, "00000000000000", "7891024115432", "ARROZ TIPO 1 CAMINHO 5KG", 24.90, 27.50, "UN", "https://via.placeholder.com/400?text=Arroz+Caminho", 1),
-            (1005, "00000000000000", "7891910001111", "FEIJÃO PRETO CARIOCA 1KG", 8.49, 9.20, "UN", "https://via.placeholder.com/400?text=Feijao+Carioca", 1),
-            # Loja 2 (Outro CNPJ) com preço diferente
-            (1001, "11111111000100", "7894900010015", "REFRIGERANTE COCA-COLA 2L PET (Loja Filial)", 9.49, 11.00, "UN", "https://via.placeholder.com/400?text=Coca-Cola+2L+Filial", 1),
-            (1002, "11111111000100", "7891000123456", "CERVEJA SKOL 350ML LATA", 4.29, 4.79, "UN", "https://via.placeholder.com/400?text=Cerveja+Skol", 1)
+            (100099, "33168717000104", "7894900010015", "Refrigerante Coca Cola 350ml", 4.99, 5.49, "UN", "https://via.placeholder.com/400?text=Coca-Cola+350ml", 1),
+            (100100, "33168717000104", "7891000123456", "Cerveja Skol 350ml Lata", 4.49, 4.99, "UN", "https://via.placeholder.com/400?text=Cerveja+Skol", 1),
+            (100101, "33168717000104", "7896004710123", "Leite Integral Parmalat 1L", 6.89, 7.29, "UN", "https://via.placeholder.com/400?text=Leite+Parmalat", 1),
+            (100099, "07647329000198", "7894900010015", "Refrigerante Coca Cola 350ml (Jardim)", 4.79, 5.29, "UN", "https://via.placeholder.com/400?text=Coca-Cola+350ml+Jardim", 1),
+            (100100, "07647329000198", "7891000123456", "Cerveja Skol 350ml Lata (Jardim)", 4.29, 4.79, "UN", "https://via.placeholder.com/400?text=Cerveja+Skol", 1)
         ]
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         for p in sample_products:
@@ -298,6 +295,24 @@ def get_product(barcode: str, cnpj: str = None, device_id: str = "unknown"):
 
 @app.get("/api/admin/stores")
 def admin_stores():
+    token = get_rp_token()
+    if token:
+        try:
+            resp = requests.get(f"{RP_HOST}/v1.6/unidades", headers={"token": token}, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                content = data.get("response", {}).get("content", data.get("unidades", []))
+                if content:
+                    stores = []
+                    for u in content:
+                        cnpj = str(u.get("cnpj", ""))
+                        nome = u.get("nome", u.get("nomeReduzido", f"Loja {cnpj}"))
+                        if cnpj:
+                            stores.append({"cnpj": cnpj, "nome": nome})
+                    if stores:
+                        return stores
+        except Exception:
+            pass
     cnpjs = [c.strip() for c in RP_CNPJ.split(",") if c.strip()]
     stores = [{"cnpj": c, "nome": f"Loja / CNPJ {c}"} for c in cnpjs]
     return stores
@@ -377,6 +392,14 @@ def admin_update_config(data: dict):
         SYNC_INTERVAL_MINUTES = int(data["sync_interval_minutes"])
     return {"status": "ok", "sync_interval_minutes": SYNC_INTERVAL_MINUTES}
 
+@app.get("/", response_class=HTMLResponse)
+def kiosk_home():
+    for p in [os.path.join("server", "static", "index.html"), os.path.join("static", "index.html")]:
+        if os.path.exists(p):
+            with open(p, "r", encoding="utf-8") as f:
+                return f.read()
+    return "index.html não encontrado"
+
 @app.get("/admin", response_class=HTMLResponse)
 def admin_panel():
     for admin_path in [os.path.join("server", "static", "admin.html"), os.path.join("static", "admin.html")]:
@@ -386,6 +409,6 @@ def admin_panel():
     return "Painel admin.html não encontrado"
 
 if os.path.exists("server/static"):
-    app.mount("/", StaticFiles(directory="server/static", html=True), name="static")
+    app.mount("/static", StaticFiles(directory="server/static"), name="static")
 elif os.path.exists("static"):
-    app.mount("/", StaticFiles(directory="static", html=True), name="static")
+    app.mount("/static", StaticFiles(directory="static"), name="static")

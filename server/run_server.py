@@ -13,4 +13,4 @@ if __name__ == "__main__":
     print(f" Painel Admin:   http://{host}:{port}/admin")
     print(f" Porta Incomum:  {port}")
     print(f"==================================================")
-    uvicorn.main(["main:app", f"--host={host}", f"--port={port}", "--reload"])
+    uvicorn.main(["server.main:app", f"--host={host}", f"--port={port}", "--reload"])
