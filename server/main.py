@@ -18,7 +18,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("consulta-preco-server")
 
-app = FastAPI(title="Consulta Preço Gmais - Servidor Local Multi-Loja + Painel Admin", version="3.6.0")
+app = FastAPI(title="Consulta Preço Gmais - Servidor Local Multi-Loja + Painel Admin", version="3.7.0")
 
 RP_HOST = os.getenv("RP_HOST", "http://servicosflex.rpinfo.com.br:9000")
 RP_USER = os.getenv("RP_USER", "100049")
@@ -148,7 +148,7 @@ def sync_products_from_erp():
                             preco_anterior = None
 
                     unidade = item.get("UnidadeMedida", item.get("unidadeMedida", item.get("unidade", item.get("Unidade", "UN"))))
-                    imagem_url = f"/api/product-image/{codigo}/{cnpj}"
+                    imagem_url = f"/api/product-image/{codigo}/{ALLOWED_CNPJS[0]}"
 
                     ativo_val = item.get("Ativo", item.get("ativo", True))
                     ativo = 1 if (ativo_val is True or ativo_val == 1 or str(ativo_val).lower() == 'true') else 0
@@ -292,25 +292,33 @@ def get_product_image(codigo: int, cnpj: str):
     if not token:
         return Response(status_code=404)
     headers = {"token": token, "Content-Type": "application/json"}
-    try:
-        url = f"{RP_HOST}/v1.0/produtounidade/{codigo}/unidade/{cnpj}/imagens"
-        resp = requests.get(url, headers=headers, timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
-            prod = data.get("response", {}).get("Produto", {})
-            imagens = prod.get("imagens", [])
-            if imagens and "imagem" in imagens[0]:
-                img_b64 = imagens[0]["imagem"]
-                img_type = imagens[0].get("tipo", "PNG").lower()
-                b = base64.b64decode(img_b64)
-                try:
-                    raw = gzip.decompress(b)
-                except:
-                    raw = b
-                media_type = f"image/{img_type}" if img_type in ["png", "jpeg", "jpg"] else "image/png"
-                return Response(content=raw, media_type=media_type)
-    except Exception as e:
-        logger.error(f"Erro ao buscar imagem do produto {codigo}: {e}")
+
+    # Try requested cnpj first, then fallback to ALLOWED_CNPJS[0]
+    try_cnpjs = [cnpj, ALLOWED_CNPJS[0]]
+    if cnpj == ALLOWED_CNPJS[0]:
+        try_cnpjs = [ALLOWED_CNPJS[0]]
+
+    for c in try_cnpjs:
+        try:
+            url = f"{RP_HOST}/v1.0/produtounidade/{codigo}/unidade/{c}/imagens"
+            resp = requests.get(url, headers=headers, timeout=8)
+            if resp.status_code == 200:
+                data = resp.json()
+                prod = data.get("response", {}).get("Produto", {})
+                imagens = prod.get("imagens", [])
+                if imagens and "imagem" in imagens[0] and imagens[0]["imagem"]:
+                    img_b64 = imagens[0]["imagem"]
+                    img_type = imagens[0].get("tipo", "PNG").lower()
+                    b = base64.b64decode(img_b64)
+                    try:
+                        raw = gzip.decompress(b)
+                    except:
+                        raw = b
+                    media_type = f"image/{img_type}" if img_type in ["png", "jpeg", "jpg"] else "image/png"
+                    return Response(content=raw, media_type=media_type)
+        except Exception as e:
+            logger.error(f"Erro ao buscar imagem do produto {codigo} na unidade {c}: {e}")
+
     return Response(status_code=404)
 
 @app.get("/api/product/{barcode}")
@@ -335,7 +343,7 @@ def get_product(barcode: str, cnpj: str = None, device_id: str = "unknown"):
             "preco": row["preco"],
             "precoAnterior": row["preco_anterior"],
             "unidadeMedida": row["unidade"],
-            "imagemUrl": f"/api/product-image/{row['codigo']}/{row['cnpj']}",
+            "imagemUrl": f"/api/product-image/{row['codigo']}/{ALLOWED_CNPJS[0]}",
             "ativo": bool(row["ativo"])
         }
         log_device_event(device_id, target_cnpj, barcode, "CONSULTA", "SUCESSO", f"Produto: {row['descricao']} - R$ {row['preco']}")
@@ -416,7 +424,7 @@ def admin_search_products(q: str = "", cnpj: str = None):
 
     products = [dict(row) for row in cursor.fetchall()]
     for p in products:
-        p["imagem_url"] = f"/api/product-image/{p['codigo']}/{p['cnpj']}"
+        p["imagem_url"] = f"/api/product-image/{p['codigo']}/{ALLOWED_CNPJS[0]}"
 
     conn.close()
     return {"count": len(products), "products": products}
