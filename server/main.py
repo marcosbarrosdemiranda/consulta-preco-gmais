@@ -137,6 +137,8 @@ def get_rp_token():
         logger.error(f"Exceção ao autenticar: {e}")
     return None
 
+ALLOWED_CNPJS = ["33168717000104", "33168717000449", "33168717000368", "33168717000791"]
+
 def get_sales_units():
     token = get_rp_token()
     sales_stores = []
@@ -149,15 +151,12 @@ def get_sales_units():
                 for u in content:
                     cnpj = str(u.get("cnpj", ""))
                     nome = u.get("nome", u.get("nomeReduzido", f"Loja {cnpj}"))
-                    ident = str(u.get("identAtividade", "")).upper()
-                    nome_lower = nome.lower()
-                    if cnpj and ident not in ["AD", "OU"] and "adm" not in nome_lower and "imobiliaria" not in nome_lower and "imobiliária" not in nome_lower:
+                    if cnpj in ALLOWED_CNPJS:
                         sales_stores.append({"cnpj": cnpj, "nome": nome, "codigo": u.get("codigo", "")})
         except Exception:
             pass
     if not sales_stores:
-        cnpjs = [c.strip() for c in RP_CNPJ.split(",") if c.strip()]
-        sales_stores = [{"cnpj": c, "nome": f"Loja / CNPJ {c}", "codigo": ""} for c in cnpjs]
+        sales_stores = [{"cnpj": c, "nome": f"Loja / CNPJ {c}", "codigo": ""} for c in ALLOWED_CNPJS]
     return sales_stores
 
 def sync_products_from_erp():
