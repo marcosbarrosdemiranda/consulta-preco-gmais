@@ -137,6 +137,29 @@ def get_rp_token():
         logger.error(f"Exceção ao autenticar: {e}")
     return None
 
+def get_sales_units():
+    token = get_rp_token()
+    sales_stores = []
+    if token:
+        try:
+            resp = requests.get(f"{RP_HOST}/v1.6/unidades", headers={"token": token}, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                content = data.get("response", {}).get("content", data.get("unidades", []))
+                for u in content:
+                    cnpj = str(u.get("cnpj", ""))
+                    nome = u.get("nome", u.get("nomeReduzido", f"Loja {cnpj}"))
+                    ident = str(u.get("identAtividade", "")).upper()
+                    nome_lower = nome.lower()
+                    if cnpj and ident not in ["AD", "OU"] and "adm" not in nome_lower and "imobiliaria" not in nome_lower and "imobiliária" not in nome_lower:
+                        sales_stores.append({"cnpj": cnpj, "nome": nome, "codigo": u.get("codigo", "")})
+        except Exception:
+            pass
+    if not sales_stores:
+        cnpjs = [c.strip() for c in RP_CNPJ.split(",") if c.strip()]
+        sales_stores = [{"cnpj": c, "nome": f"Loja / CNPJ {c}", "codigo": ""} for c in cnpjs]
+    return sales_stores
+
 def sync_products_from_erp():
     global sync_status
     if sync_status["is_syncing"]:
@@ -151,7 +174,8 @@ def sync_products_from_erp():
         return
 
     headers = {"token": token, "Content-Type": "application/json"}
-    cnpjs = [c.strip() for c in RP_CNPJ.split(",") if c.strip()]
+    sales_units = get_sales_units()
+    cnpjs = [s["cnpj"] for s in sales_units if s.get("cnpj")]
     total_geral = 0
     unidades_sucesso = []
 
@@ -295,27 +319,7 @@ def get_product(barcode: str, cnpj: str = None, device_id: str = "unknown"):
 
 @app.get("/api/admin/stores")
 def admin_stores():
-    token = get_rp_token()
-    if token:
-        try:
-            resp = requests.get(f"{RP_HOST}/v1.6/unidades", headers={"token": token}, timeout=5)
-            if resp.status_code == 200:
-                data = resp.json()
-                content = data.get("response", {}).get("content", data.get("unidades", []))
-                if content:
-                    stores = []
-                    for u in content:
-                        cnpj = str(u.get("cnpj", ""))
-                        nome = u.get("nome", u.get("nomeReduzido", f"Loja {cnpj}"))
-                        if cnpj:
-                            stores.append({"cnpj": cnpj, "nome": nome})
-                    if stores:
-                        return stores
-        except Exception:
-            pass
-    cnpjs = [c.strip() for c in RP_CNPJ.split(",") if c.strip()]
-    stores = [{"cnpj": c, "nome": f"Loja / CNPJ {c}"} for c in cnpjs]
-    return stores
+    return get_sales_units()
 
 @app.get("/api/admin/stats")
 def admin_stats():
