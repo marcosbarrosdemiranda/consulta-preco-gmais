@@ -10,16 +10,12 @@
     <style>
         body { font-family: 'Inter', sans-serif; user-select: none; }
         .glow { box-shadow: 0 0 25px rgba(59, 130, 246, 0.4); }
-        /* Suporte a Modo Retrato vs Paisagem */
-        body.mode-retrato {
-            transform: rotate(0deg);
-        }
     </style>
 </head>
-<body id="kiosk-body" class="bg-slate-900 text-white h-screen w-screen overflow-hidden flex flex-col justify-between p-8 mode-paisagem">
+<body id="kiosk-body" class="bg-slate-900 text-white h-screen w-screen overflow-hidden flex flex-col justify-between p-6">
 
     <!-- Header / Brand -->
-    <header class="flex flex-wrap justify-between items-center bg-slate-800 border border-slate-700 px-8 py-4 rounded-2xl shadow-lg gap-4">
+    <header class="flex flex-wrap justify-between items-center bg-slate-800 border border-slate-700 px-6 py-3 rounded-2xl shadow-lg gap-4">
         <div class="flex items-center space-x-4 cursor-pointer" onclick="handleLogoClick()">
             <div class="bg-blue-600 text-white font-black text-2xl px-5 py-2 rounded-xl shadow">GMAIS</div>
             <div>
@@ -41,9 +37,9 @@
     </header>
 
     <!-- Main Content Area -->
-    <main class="flex-grow flex items-center justify-center my-6">
+    <main class="flex-grow flex items-center justify-center my-4">
 
-        <!-- Idle State (Clicável para abrir câmera se o modo câmera estiver ativo) -->
+        <!-- Idle State -->
         <div id="state-idle" onclick="handleIdleClick()" class="flex flex-col items-center justify-center text-center space-y-6 cursor-pointer group">
             <div class="relative bg-slate-800 border-2 border-dashed border-slate-600 p-12 rounded-3xl glow group-hover:border-blue-500 transition">
                 <svg class="w-28 h-28 text-blue-400 mx-auto" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
@@ -97,14 +93,17 @@
 
     </main>
 
-    <!-- Modal de Câmera (Abre ao tocar na tela no modo câmera) -->
-    <div id="camera-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6">
-        <div class="bg-slate-800 border border-slate-700 w-full max-w-xl rounded-3xl p-6 shadow-2xl space-y-4">
+    <!-- Modal de Câmera -->
+    <div id="camera-modal" class="hidden fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6">
+        <div class="bg-slate-800 border border-slate-700 w-full max-w-lg rounded-3xl p-6 shadow-2xl space-y-4">
             <div class="flex justify-between items-center border-b border-slate-700 pb-3">
-                <h3 class="text-lg font-bold text-white">📷 Leitura de Código de Barras por Câmera</h3>
+                <h3 class="text-lg font-bold text-white">📷 Câmera para Leitura</h3>
                 <button onclick="closeCameraModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
             </div>
-            <div id="reader" class="w-full rounded-2xl overflow-hidden bg-slate-900 border border-slate-700"></div>
+            <div id="camera-error" class="hidden bg-red-950/40 border border-red-500/50 p-4 rounded-xl text-xs text-red-300 text-center">
+                A câmera requer HTTPS ou localhost para funcionar no navegador/WebView. Certifique-se de conceder permissão.
+            </div>
+            <div id="reader" class="w-full h-72 rounded-2xl overflow-hidden bg-slate-900 border border-slate-700"></div>
             <p class="text-xs text-slate-400 text-center">Aponte o código de barras para a lente da câmera</p>
         </div>
     </div>
@@ -174,7 +173,7 @@
 
     <!-- Footer -->
     <footer class="flex justify-between items-center text-xs text-slate-500 border-t border-slate-800 pt-4">
-        <p>Gmais Kiosk v3.9.5 — Modo Kiosk Seguro</p>
+        <p>Gmais Kiosk v3.9.6 — Modo Kiosk Seguro</p>
         <div class="space-x-2">
             <button onclick="simulateScan('7894900010015')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded border border-slate-700">Simular Coca-Cola</button>
         </div>
@@ -258,23 +257,15 @@
             const body = document.getElementById('kiosk-body');
             const instruction = document.getElementById('idle-instruction');
 
-            body.classList.remove('mode-paisagem', 'mode-retrato');
-            body.classList.add(`mode-${orientationMode}`);
-
             if (orientationMode === 'retrato') {
-                body.style.transform = 'rotate(90deg)';
-                body.style.transformOrigin = 'bottom left';
-                body.style.width = '100vh';
-                body.style.height = '100vw';
-                body.style.position = 'absolute';
-                body.style.top = '-100vw';
-                body.style.left = '0';
-            } else {
                 body.style.transform = 'none';
-                body.style.transformOrigin = 'initial';
                 body.style.width = '100vw';
                 body.style.height = '100vh';
-                body.style.position = 'static';
+                // Em modo retrato mantemos o layout vertical natural
+            } else {
+                body.style.transform = 'none';
+                body.style.width = '100vw';
+                body.style.height = '100vh';
             }
 
             if (scanMethod === 'camera') {
@@ -291,10 +282,11 @@
         }
 
         function openCameraModal() {
+            document.getElementById('camera-error').classList.add('hidden');
             document.getElementById('camera-modal').classList.remove('hidden');
             setTimeout(() => {
                 startCameraScanner();
-            }, 300);
+            }, 400);
         }
 
         function closeCameraModal() {
@@ -316,9 +308,11 @@
                     (errorMessage) => {}
                 ).catch(err => {
                     console.error("Erro ao iniciar câmera:", err);
+                    document.getElementById('camera-error').classList.remove('hidden');
                 });
             } catch (e) {
                 console.error(e);
+                document.getElementById('camera-error').classList.remove('hidden');
             }
         }
 
@@ -342,7 +336,7 @@
                         device_id: deviceId,
                         store_cnpj: currentStoreCnpj,
                         ip_address: '127.0.0.1',
-                        app_version: '3.9.5',
+                        app_version: '3.9.6',
                         status: 'online'
                     })
                 });
