@@ -391,16 +391,14 @@ def admin_update_config(data: dict):
 
 @app.get("/admin", response_class=HTMLResponse)
 def admin_panel():
-    admin_path = os.path.join("server", "static", "admin.html")
-    if os.path.exists(admin_path):
-        with open(admin_path, "r", encoding="utf-8") as f:
-            return f.read()
+    for admin_path in [os.path.join("server", "static", "admin.html"), os.path.join("static", "admin.html")]:
+        if os.path.exists(admin_path):
+            with open(admin_path, "r", encoding="utf-8") as f:
+                return f.read()
     return "Painel admin.html não encontrado"
 
 # Servir Frontend do Kiosk e Painel Admin
 if os.path.exists("server/static"):
     app.mount("/", StaticFiles(directory="server/static", html=True), name="static")
-else:
-    @app.get("/")
-    def root():
-        return {"message": "Servidor rodando. Coloque arquivos em server/static/"}
+elif os.path.exists("static"):
+    app.mount("/", StaticFiles(directory="static", html=True), name="static")
