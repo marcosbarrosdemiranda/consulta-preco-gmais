@@ -16,18 +16,20 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("consulta-preco-server")
 
-app = FastAPI(title="Consulta Preço Gmais - Servidor Local Multi-Loja + Painel Admin", version="3.2.0")
+app = FastAPI(title="Consulta Preço Gmais - Servidor Local Multi-Loja + Painel Admin", version="3.4.0")
 
 RP_HOST = os.getenv("RP_HOST", "http://servicosflex.rpinfo.com.br:9000")
 RP_USER = os.getenv("RP_USER", "100049")
 RP_PASS = os.getenv("RP_PASS", "gr142536")
-RP_CNPJ = os.getenv("RP_CNPJ", "00000000000000,11111111000100")
+RP_CNPJ = os.getenv("RP_CNPJ", "33168717000104,33168717000449,33168717000368,33168717000791")
 SYNC_INTERVAL_MINUTES = int(os.getenv("SYNC_INTERVAL_MINUTES", "10"))
 SERVER_PORT = int(os.getenv("PORT", "48291"))
 
 DATA_DIR = "/app/data" if os.path.exists("/app") else "data"
 os.makedirs(DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(DATA_DIR, "produtos.db")
+
+ALLOWED_CNPJS = ["33168717000104", "33168717000449", "33168717000368", "33168717000791"]
 
 sync_status = {
     "is_syncing": False,
@@ -36,92 +38,6 @@ sync_status = {
     "unidades_sincronizadas": [],
     "ultimo_erro": None
 }
-
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS produtos (
-            codigo INTEGER,
-            cnpj TEXT,
-            codigo_barras TEXT,
-            descricao TEXT,
-            preco REAL,
-            preco_anterior REAL,
-            unidade TEXT,
-            imagem_url TEXT,
-            ativo INTEGER,
-            updated_at TEXT,
-            PRIMARY KEY (codigo, cnpj)
-        )
-    """)
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_barras_cnpj ON produtos(codigo_barras, cnpj)")
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS devices (
-            device_id TEXT PRIMARY KEY,
-            store_cnpj TEXT,
-            ip_address TEXT,
-            app_version TEXT,
-            status TEXT,
-            last_seen TEXT
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS device_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            device_id TEXT,
-            store_cnpj TEXT,
-            barcode TEXT,
-            action_type TEXT,
-            result_status TEXT,
-            message TEXT,
-            created_at TEXT
-        )
-    """)
-
-    conn.commit()
-
-    # Seed products if empty
-    cursor.execute("SELECT COUNT(*) FROM produtos")
-    if cursor.fetchone()[0] == 0:
-        logger.info("Banco vazio detectado. Inserindo produtos de exemplo (seed)...")
-        sample_products = [
-            (100099, "33168717000104", "7894900010015", "Refrigerante Coca Cola 350ml", 4.99, 5.49, "UN", "https://via.placeholder.com/400?text=Coca-Cola+350ml", 1),
-            (100100, "33168717000104", "7891000123456", "Cerveja Skol 350ml Lata", 4.49, 4.99, "UN", "https://via.placeholder.com/400?text=Cerveja+Skol", 1),
-            (100101, "33168717000104", "7896004710123", "Leite Integral Parmalat 1L", 6.89, 7.29, "UN", "https://via.placeholder.com/400?text=Leite+Parmalat", 1),
-            (100099, "07647329000198", "7894900010015", "Refrigerante Coca Cola 350ml (Jardim)", 4.79, 5.29, "UN", "https://via.placeholder.com/400?text=Coca-Cola+350ml+Jardim", 1),
-            (100100, "07647329000198", "7891000123456", "Cerveja Skol 350ml Lata (Jardim)", 4.29, 4.79, "UN", "https://via.placeholder.com/400?text=Cerveja+Skol", 1)
-        ]
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        for p in sample_products:
-            cursor.execute("""
-                INSERT OR REPLACE INTO produtos (codigo, cnpj, codigo_barras, descricao, preco, preco_anterior, unidade, imagem_url, ativo, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (*p, now_str))
-        conn.commit()
-        logger.info("Produtos de exemplo inseridos com sucesso.")
-
-    conn.close()
-    logger.info(f"Banco SQLite inicializado em {DB_PATH}.")
-
-init_db()
-
-def log_device_event(device_id: str, store_cnpj: str, barcode: str, action_type: str, result_status: str, message: str):
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cursor.execute("""
-            INSERT INTO device_logs (device_id, store_cnpj, barcode, action_type, result_status, message, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (device_id, store_cnpj, barcode, action_type, result_status, message, now))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"Erro ao registrar log: {e}")
 
 def get_rp_token():
     url = f"{RP_HOST}/v1.1/auth"
@@ -136,8 +52,6 @@ def get_rp_token():
     except Exception as e:
         logger.error(f"Exceção ao autenticar: {e}")
     return None
-
-ALLOWED_CNPJS = ["33168717000104", "33168717000449", "33168717000368", "33168717000791"]
 
 def get_sales_units():
     token = get_rp_token()
@@ -156,7 +70,12 @@ def get_sales_units():
         except Exception:
             pass
     if not sales_stores:
-        sales_stores = [{"cnpj": c, "nome": f"Loja / CNPJ {c}", "codigo": ""} for c in ALLOWED_CNPJS]
+        sales_stores = [
+            {"cnpj": "33168717000104", "nome": "Loja 001 - Matriz", "codigo": "1"},
+            {"cnpj": "33168717000449", "nome": "Loja 003 - Filial", "codigo": "3"},
+            {"cnpj": "33168717000368", "nome": "Loja 010 - Filial", "codigo": "10"},
+            {"cnpj": "33168717000791", "nome": "Loja 030 - Filial", "codigo": "30"}
+        ]
     return sales_stores
 
 def sync_products_from_erp():
@@ -243,6 +162,96 @@ def sync_products_from_erp():
         conn.close()
         sync_status["is_syncing"] = False
 
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS produtos (
+            codigo INTEGER,
+            cnpj TEXT,
+            codigo_barras TEXT,
+            descricao TEXT,
+            preco REAL,
+            preco_anterior REAL,
+            unidade TEXT,
+            imagem_url TEXT,
+            ativo INTEGER,
+            updated_at TEXT,
+            PRIMARY KEY (codigo, cnpj)
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_barras_cnpj ON produtos(codigo_barras, cnpj)")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS devices (
+            device_id TEXT PRIMARY KEY,
+            store_cnpj TEXT,
+            ip_address TEXT,
+            app_version TEXT,
+            status TEXT,
+            last_seen TEXT
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS device_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id TEXT,
+            store_cnpj TEXT,
+            barcode TEXT,
+            action_type TEXT,
+            result_status TEXT,
+            message TEXT,
+            created_at TEXT
+        )
+    """)
+
+    # Remove unauthorized CNPJs from database
+    cursor.execute("DELETE FROM produtos WHERE cnpj NOT IN ('33168717000104', '33168717000449', '33168717000368', '33168717000791')")
+    conn.commit()
+
+    # Seed products if empty
+    cursor.execute("SELECT COUNT(*) FROM produtos")
+    if cursor.fetchone()[0] == 0:
+        logger.info("Banco vazio detectado. Inserindo produtos de exemplo (seed)...")
+        sample_products = [
+            (100099, "33168717000104", "7894900010015", "Refrigerante Coca Cola 350ml", 4.99, 5.49, "UN", "https://via.placeholder.com/400?text=Coca-Cola+350ml", 1),
+            (100100, "33168717000104", "7891000123456", "Cerveja Skol 350ml Lata", 4.49, 4.99, "UN", "https://via.placeholder.com/400?text=Cerveja+Skol", 1),
+            (100099, "33168717000449", "7894900010015", "Refrigerante Coca Cola 350ml (Loja 003)", 4.89, 5.39, "UN", "https://via.placeholder.com/400?text=Coca-Cola+Loja003", 1),
+            (100099, "33168717000368", "7894900010015", "Refrigerante Coca Cola 350ml (Loja 010)", 4.79, 5.29, "UN", "https://via.placeholder.com/400?text=Coca-Cola+Loja010", 1),
+            (100099, "33168717000791", "7894900010015", "Refrigerante Coca Cola 350ml (Loja 030)", 4.99, 5.49, "UN", "https://via.placeholder.com/400?text=Coca-Cola+Loja030", 1)
+        ]
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        for p in sample_products:
+            cursor.execute("""
+                INSERT OR REPLACE INTO produtos (codigo, cnpj, codigo_barras, descricao, preco, preco_anterior, unidade, imagem_url, ativo, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (*p, now_str))
+        conn.commit()
+        logger.info("Produtos de exemplo inseridos com sucesso.")
+
+    conn.close()
+    logger.info(f"Banco SQLite inicializado em {DB_PATH}.")
+
+# Initialize DB and start sync thread
+init_db()
+threading.Thread(target=sync_products_from_erp, daemon=True).start()
+
+def log_device_event(device_id: str, store_cnpj: str, barcode: str, action_type: str, result_status: str, message: str):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute("""
+            INSERT INTO device_logs (device_id, store_cnpj, barcode, action_type, result_status, message, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (device_id, store_cnpj, barcode, action_type, result_status, message, now))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Erro ao registrar log: {e}")
+
 def background_scheduler():
     global SYNC_INTERVAL_MINUTES
     while True:
@@ -268,7 +277,7 @@ def trigger_sync(background_tasks: BackgroundTasks):
 @app.post("/api/device/heartbeat")
 def device_heartbeat(data: dict):
     device_id = data.get("device_id", "unknown")
-    store_cnpj = data.get("store_cnpj", RP_CNPJ.split(",")[0])
+    store_cnpj = data.get("store_cnpj", ALLOWED_CNPJS[0])
     ip_address = data.get("ip_address", "0.0.0.0")
     app_version = data.get("app_version", "1.0.0")
     status = data.get("status", "online")
@@ -285,7 +294,7 @@ def device_heartbeat(data: dict):
 
 @app.get("/api/product/{barcode}")
 def get_product(barcode: str, cnpj: str = None, device_id: str = "unknown"):
-    target_cnpj = cnpj if cnpj else [c.strip() for c in RP_CNPJ.split(",") if c.strip()][0]
+    target_cnpj = cnpj if cnpj else ALLOWED_CNPJS[0]
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
