@@ -72,6 +72,31 @@
             </div>
         </div>
 
+        <!-- Android Kiosk APK Info Card -->
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow mb-8">
+            <h2 class="text-lg font-bold text-white mb-2 flex items-center justify-between">
+                <span>📱 Totem Android Kiosk & Geração de APK</span>
+                <span class="bg-emerald-500/20 text-emerald-400 text-xs px-2.5 py-1 rounded-full font-bold">Android 7.0+ (API 24+)</span>
+            </h2>
+            <p class="text-sm text-slate-300 mb-4">
+                O projeto nativo Android Studio está pronto em <code class="bg-slate-900 px-2 py-0.5 rounded text-blue-300 font-mono">android-kiosk/</code>. Ele trava a tela do tablet em modo imersivo (fullscreen), bloqueia o botão voltar e se conecta automaticamente ao servidor local Gmais via USB OTG leitor de código de barras.
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-300">
+                <div class="bg-slate-900/60 border border-slate-700 p-4 rounded-xl">
+                    <p class="font-bold text-blue-400 mb-1">1. URL do Servidor no Android</p>
+                    <p class="text-slate-400">Em <code class="text-slate-200">MainActivity.kt</code>, altere <code class="text-slate-200">serverUrl</code> para o IP deste PC (ex: <code class="text-slate-200">http://192.168.1.4:48291</code>).</p>
+                </div>
+                <div class="bg-slate-900/60 border border-slate-700 p-4 rounded-xl">
+                    <p class="font-bold text-blue-400 mb-1">2. Gerar APK no Android Studio</p>
+                    <p class="text-slate-400">Abra a pasta <code class="text-slate-200">android-kiosk</code> no Android Studio e vá em <code class="text-slate-200">Build > Build APK(s)</code>.</p>
+                </div>
+                <div class="bg-slate-900/60 border border-slate-700 p-4 rounded-xl">
+                    <p class="font-bold text-blue-400 mb-1">3. Instalação & Modo Launcher</p>
+                    <p class="text-slate-400">Instale o APK no tablet Android e defina como Launcher padrão para inicialização automática em modo Kiosk.</p>
+                </div>
+            </div>
+        </div>
+
         <!-- Tabs / Sections -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
