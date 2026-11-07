@@ -10,17 +10,21 @@
     <style>
         body { font-family: 'Inter', sans-serif; user-select: none; }
         .glow { box-shadow: 0 0 25px rgba(59, 130, 246, 0.4); }
+        /* Suporte a Modo Retrato vs Paisagem */
+        body.mode-retrato {
+            transform: rotate(0deg);
+        }
     </style>
 </head>
-<body class="bg-slate-900 text-white h-screen w-screen overflow-hidden flex flex-col justify-between p-8">
+<body id="kiosk-body" class="bg-slate-900 text-white h-screen w-screen overflow-hidden flex flex-col justify-between p-8 mode-paisagem">
 
-    <!-- Header / Brand (Sem link de admin para o cliente) -->
+    <!-- Header / Brand -->
     <header class="flex flex-wrap justify-between items-center bg-slate-800 border border-slate-700 px-8 py-4 rounded-2xl shadow-lg gap-4">
         <div class="flex items-center space-x-4 cursor-pointer" onclick="handleLogoClick()">
             <div class="bg-blue-600 text-white font-black text-2xl px-5 py-2 rounded-xl shadow">GMAIS</div>
             <div>
                 <h1 class="text-xl font-bold tracking-wide">CONSULTA DE PREÇOS (PDV)</h1>
-                <p id="mode-subtitle" class="text-xs text-slate-400">Aproxime o código de barras ou use a câmera</p>
+                <p id="mode-subtitle" class="text-xs text-slate-400">Aproxime o código de barras ou use o leitor</p>
             </div>
         </div>
 
@@ -29,8 +33,8 @@
                 <span class="h-3 w-3 rounded-full bg-emerald-500 animate-pulse"></span>
                 <span class="text-xs font-semibold text-emerald-400">Online</span>
             </div>
-            <!-- Botão de Configuração (Discreto - engrenagem) -->
-            <button onclick="openConfigModal()" class="bg-slate-700/60 hover:bg-slate-700 text-slate-300 p-2.5 rounded-xl border border-slate-600 transition" title="Configurações do Totem">
+            <!-- Botão de Configuração (Engrenagem) -->
+            <button onclick="openConfigModal()" class="bg-slate-700/60 hover:bg-slate-700 text-slate-300 p-2.5 rounded-xl border border-slate-600 transition" title="Configurações">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
             </button>
         </div>
@@ -39,21 +43,17 @@
     <!-- Main Content Area -->
     <main class="flex-grow flex items-center justify-center my-6">
 
-        <!-- Idle State -->
-        <div id="state-idle" class="flex flex-col items-center justify-center text-center space-y-6">
-            <div class="relative bg-slate-800 border-2 border-dashed border-slate-600 p-12 rounded-3xl glow">
+        <!-- Idle State (Clicável para abrir câmera se o modo câmera estiver ativo) -->
+        <div id="state-idle" onclick="handleIdleClick()" class="flex flex-col items-center justify-center text-center space-y-6 cursor-pointer group">
+            <div class="relative bg-slate-800 border-2 border-dashed border-slate-600 p-12 rounded-3xl glow group-hover:border-blue-500 transition">
                 <svg class="w-28 h-28 text-blue-400 mx-auto" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5z"></path>
                     <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 6.75h.008v.008H6.75V6.75zm0 9.75h.008v.008H6.75v-.008zm9.75-9.75h.008v.008H16.5V6.75zm-3.75 3.75h.008v.008H12.75v-.008zm0 3h.008v.008H12.75v-.008zm3.75 3.75h.008v.008H16.5v-.008zm3.75-3.75h.008v.008H20.25v-.008z"></path>
                 </svg>
             </div>
             <div>
-                <h2 class="text-3xl font-extrabold tracking-tight">Aproxime o Produto do Leitor</h2>
-                <p class="text-slate-400 text-lg mt-2">Leitor USB OTG ou Câmera ativos</p>
-            </div>
-            <!-- Container da Câmera (quando o modo câmera estiver ativo) -->
-            <div id="camera-container" class="hidden w-full max-w-md bg-slate-800 border border-slate-700 p-4 rounded-2xl shadow-xl mt-4">
-                <div id="reader" class="w-full rounded-xl overflow-hidden"></div>
+                <h2 class="text-3xl font-extrabold tracking-tight">Aproxime o Produto ou Toque na Tela</h2>
+                <p id="idle-instruction" class="text-slate-400 text-lg mt-2">Leitor USB OTG ou Toque para abrir a Câmera</p>
             </div>
         </div>
 
@@ -97,13 +97,23 @@
 
     </main>
 
+    <!-- Modal de Câmera (Abre ao tocar na tela no modo câmera) -->
+    <div id="camera-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6">
+        <div class="bg-slate-800 border border-slate-700 w-full max-w-xl rounded-3xl p-6 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-700 pb-3">
+                <h3 class="text-lg font-bold text-white">📷 Leitura de Código de Barras por Câmera</h3>
+                <button onclick="closeCameraModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
+            </div>
+            <div id="reader" class="w-full rounded-2xl overflow-hidden bg-slate-900 border border-slate-700"></div>
+            <p class="text-xs text-slate-400 text-center">Aponte o código de barras para a lente da câmera</p>
+        </div>
+    </div>
+
     <!-- Modal de Configuração do Totem -->
     <div id="config-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
         <div class="bg-slate-800 border border-slate-700 w-full max-w-lg rounded-3xl p-8 shadow-2xl space-y-6">
             <div class="flex justify-between items-center border-b border-slate-700 pb-4">
-                <h3 class="text-xl font-bold text-white flex items-center space-x-2">
-                    <span>⚙️ Configurações do Totem Kiosk</span>
-                </h3>
+                <h3 class="text-xl font-bold text-white">⚙️ Configurações do Totem Kiosk</h3>
                 <button onclick="closeConfigModal()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
             </div>
 
@@ -115,20 +125,40 @@
                 </div>
 
                 <div>
-                    <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Método Principal de Leitura de Código de Barras</label>
+                    <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Modo de Exibição (Orientação)</label>
                     <div class="grid grid-cols-2 gap-4">
                         <label class="flex items-center space-x-3 bg-slate-900 border border-slate-700 p-4 rounded-xl cursor-pointer hover:border-blue-500">
-                            <input type="radio" name="scan_method" value="usb" id="method-usb" class="text-blue-600 focus:ring-blue-500">
+                            <input type="radio" name="orientation" value="paisagem" id="orient-paisagem" class="text-blue-600">
+                            <div>
+                                <p class="font-bold text-white">Paisagem</p>
+                                <p class="text-xs text-slate-400">Horizontal (Padrão)</p>
+                            </div>
+                        </label>
+                        <label class="flex items-center space-x-3 bg-slate-900 border border-slate-700 p-4 rounded-xl cursor-pointer hover:border-blue-500">
+                            <input type="radio" name="orientation" value="retrato" id="orient-retrato" class="text-blue-600">
+                            <div>
+                                <p class="font-bold text-white">Retrato</p>
+                                <p class="text-xs text-slate-400">Vertical</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Método de Leitura</label>
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="flex items-center space-x-3 bg-slate-900 border border-slate-700 p-4 rounded-xl cursor-pointer hover:border-blue-500">
+                            <input type="radio" name="scan_method" value="usb" id="method-usb" class="text-blue-600">
                             <div>
                                 <p class="font-bold text-white">Leitor USB OTG</p>
                                 <p class="text-xs text-slate-400">Leitor físico via cabo</p>
                             </div>
                         </label>
                         <label class="flex items-center space-x-3 bg-slate-900 border border-slate-700 p-4 rounded-xl cursor-pointer hover:border-blue-500">
-                            <input type="radio" name="scan_method" value="camera" id="method-camera" class="text-blue-600 focus:ring-blue-500">
+                            <input type="radio" name="scan_method" value="camera" id="method-camera" class="text-blue-600">
                             <div>
-                                <p class="font-bold text-white">Câmera</p>
-                                <p class="text-xs text-slate-400">Leitura por vídeo</p>
+                                <p class="font-bold text-white">Câmera por Toque</p>
+                                <p class="text-xs text-slate-400">Toque na tela para ler</p>
                             </div>
                         </label>
                     </div>
@@ -142,11 +172,11 @@
         </div>
     </div>
 
-    <!-- Footer / Simulação -->
+    <!-- Footer -->
     <footer class="flex justify-between items-center text-xs text-slate-500 border-t border-slate-800 pt-4">
-        <p id="footer-info">Gmais Kiosk v3.9.0 — Modo Kiosk Seguro</p>
+        <p>Gmais Kiosk v3.9.5 — Modo Kiosk Seguro</p>
         <div class="space-x-2">
-            <button onclick="simulateScan('7894900010015')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded border border-slate-700">Simular Coca-Cola 350ml</button>
+            <button onclick="simulateScan('7894900010015')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded border border-slate-700">Simular Coca-Cola</button>
         </div>
     </footer>
 
@@ -156,6 +186,7 @@
         let resetTimer = null;
         let currentStoreCnpj = localStorage.getItem('kiosk_cnpj') || '33168717000104';
         let scanMethod = localStorage.getItem('kiosk_method') || 'usb'; // 'usb' ou 'camera'
+        let orientationMode = localStorage.getItem('kiosk_orientation') || 'paisagem'; // 'paisagem' ou 'retrato'
         let deviceId = localStorage.getItem('kiosk_device_id') || ('totem_' + Math.random().toString(36).substring(2, 9));
         localStorage.setItem('kiosk_device_id', deviceId);
 
@@ -197,6 +228,11 @@
             } else {
                 document.getElementById('method-usb').checked = true;
             }
+            if (orientationMode === 'retrato') {
+                document.getElementById('orient-retrato').checked = true;
+            } else {
+                document.getElementById('orient-paisagem').checked = true;
+            }
             document.getElementById('config-modal').classList.remove('hidden');
         }
 
@@ -207,11 +243,94 @@
         function saveConfigModal() {
             currentStoreCnpj = document.getElementById('config-store-select').value;
             scanMethod = document.querySelector('input[name="scan_method"]:checked').value;
+            orientationMode = document.querySelector('input[name="orientation"]:checked').value;
+
             localStorage.setItem('kiosk_cnpj', currentStoreCnpj);
             localStorage.setItem('kiosk_method', scanMethod);
+            localStorage.setItem('kiosk_orientation', orientationMode);
+
             closeConfigModal();
-            applyScanMethod();
+            applySettings();
             sendHeartbeat();
+        }
+
+        function applySettings() {
+            const body = document.getElementById('kiosk-body');
+            const instruction = document.getElementById('idle-instruction');
+
+            body.classList.remove('mode-paisagem', 'mode-retrato');
+            body.classList.add(`mode-${orientationMode}`);
+
+            if (orientationMode === 'retrato') {
+                body.style.transform = 'rotate(90deg)';
+                body.style.transformOrigin = 'bottom left';
+                body.style.width = '100vh';
+                body.style.height = '100vw';
+                body.style.position = 'absolute';
+                body.style.top = '-100vw';
+                body.style.left = '0';
+            } else {
+                body.style.transform = 'none';
+                body.style.transformOrigin = 'initial';
+                body.style.width = '100vw';
+                body.style.height = '100vh';
+                body.style.position = 'static';
+            }
+
+            if (scanMethod === 'camera') {
+                instruction.innerText = "Toque na tela para abrir a Câmera e ler o código";
+            } else {
+                instruction.innerText = "Leitor USB OTG ativo — Aproxime o produto";
+            }
+        }
+
+        function handleIdleClick() {
+            if (scanMethod === 'camera') {
+                openCameraModal();
+            }
+        }
+
+        function openCameraModal() {
+            document.getElementById('camera-modal').classList.remove('hidden');
+            setTimeout(() => {
+                startCameraScanner();
+            }, 300);
+        }
+
+        function closeCameraModal() {
+            stopCameraScanner();
+            document.getElementById('camera-modal').classList.add('hidden');
+        }
+
+        function startCameraScanner() {
+            if (html5QrCode) return;
+            try {
+                html5QrCode = new Html5Qrcode("reader");
+                html5QrCode.start(
+                    { facingMode: "environment" },
+                    { fps: 10, qrbox: { width: 250, height: 150 } },
+                    (decodedText) => {
+                        closeCameraModal();
+                        processBarcode(decodedText);
+                    },
+                    (errorMessage) => {}
+                ).catch(err => {
+                    console.error("Erro ao iniciar câmera:", err);
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function stopCameraScanner() {
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => {
+                    html5QrCode.clear();
+                    html5QrCode = null;
+                }).catch(err => {
+                    html5QrCode = null;
+                });
+            }
         }
 
         async function sendHeartbeat() {
@@ -223,7 +342,7 @@
                         device_id: deviceId,
                         store_cnpj: currentStoreCnpj,
                         ip_address: '127.0.0.1',
-                        app_version: '3.9.0',
+                        app_version: '3.9.5',
                         status: 'online'
                     })
                 });
@@ -252,51 +371,6 @@
                 barcodeBuffer += e.key;
             }
         });
-
-        async function applyScanMethod() {
-            const camContainer = document.getElementById('camera-container');
-            const subtitle = document.getElementById('mode-subtitle');
-
-            if (scanMethod === 'camera') {
-                subtitle.innerText = "Modo Câmera Ativo — Aponte o código para a lente";
-                camContainer.classList.remove('hidden');
-                startCameraScanner();
-            } else {
-                subtitle.innerText = "Aproxime o código de barras do Leitor USB OTG";
-                camContainer.classList.add('hidden');
-                stopCameraScanner();
-            }
-        }
-
-        function startCameraScanner() {
-            if (html5QrCode) return;
-            try {
-                html5QrCode = new Html5Qrcode("reader");
-                html5QrCode.start(
-                    { facingMode: "environment" },
-                    { fps: 10, qrbox: { width: 250, height: 150 } },
-                    (decodedText) => {
-                        processBarcode(decodedText);
-                    },
-                    (errorMessage) => {}
-                ).catch(err => {
-                    console.error("Erro ao iniciar câmera:", err);
-                });
-            } catch (e) {
-                console.error(e);
-            }
-        }
-
-        function stopCameraScanner() {
-            if (html5QrCode) {
-                html5QrCode.stop().then(() => {
-                    html5QrCode.clear();
-                    html5QrCode = null;
-                }).catch(err => {
-                    html5QrCode = null;
-                });
-            }
-        }
 
         function showState(stateName) {
             ['idle', 'loading', 'product', 'error'].forEach(s => {
@@ -343,9 +417,6 @@
 
             resetTimer = setTimeout(() => {
                 showState('idle');
-                if (scanMethod === 'camera') {
-                    startCameraScanner();
-                }
             }, 8000);
         }
 
@@ -355,7 +426,7 @@
 
         // Init
         loadStores();
-        applyScanMethod();
+        applySettings();
         sendHeartbeat();
         setInterval(sendHeartbeat, 30000);
     </script>
