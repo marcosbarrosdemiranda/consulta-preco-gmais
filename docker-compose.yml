@@ -3,7 +3,7 @@ services:
     build: ./server
     container_name: consulta-preco-gmais-server
     ports:
-      - "8000:8000"
+      - "48291:48291"
     volumes:
       - ./server/data:/app/data
     environment:
@@ -12,4 +12,5 @@ services:
       - RP_PASS=${RP_PASS:-gr142536}
       - RP_CNPJ=${RP_CNPJ:-00000000000000}
       - SYNC_INTERVAL_MINUTES=${SYNC_INTERVAL_MINUTES:-10}
+      - PORT=48291
     restart: unless-stopped
