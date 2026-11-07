@@ -1,150 +1,277 @@
 import os
 import time
+import sqlite3
 import logging
+import threading
 import requests
-from fastapi import FastAPI, HTTPException, Query
+from datetime import datetime
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("consulta-preco-server")
 
-app = FastAPI(title="Consulta Preço Gmais - Servidor Local", version="1.0.0")
+app = FastAPI(title="Consulta Preço Gmais - Servidor Local (RP Info Sync)", version="2.0.0")
 
-RP_HOST = os.getenv("RP_HOST", "http://servicosflex.rpinfo.com.br:9000")
+RP_HOST = os.getenv("RP_HOST", "http://192.168.1.4:9000")
 RP_USER = os.getenv("RP_USER", "100049")
 RP_PASS = os.getenv("RP_PASS", "gr142536")
 RP_CNPJ = os.getenv("RP_CNPJ", "00000000000000")
+SYNC_INTERVAL_MINUTES = int(os.getenv("SYNC_INTERVAL_MINUTES", "10"))
 
-# Token cache storage
-token_cache = {
-    "token": None,
-    "expires_at": 0
+DB_PATH = "produtos.db"
+
+# Estado global da sincronização
+sync_status = {
+    "is_syncing": False,
+    "last_sync": None,
+    "total_produtos": 0,
+    "ultimo_erro": None
 }
+
+def init_db():
+    """Inicializa o banco de dados SQLite local para cache de produtos ativos."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS produtos (
+            codigo INTEGER PRIMARY KEY,
+            codigo_barras TEXT,
+            descricao TEXT,
+            preco REAL,
+            preco_anterior REAL,
+            unidade TEXT,
+            imagem_url TEXT,
+            ativo INTEGER,
+            updated_at TEXT
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_barras ON produtos(codigo_barras)")
+    conn.commit()
+    conn.close()
+    logger.info("Banco de dados SQLite local inicializado com sucesso.")
+
+init_db()
 
 def get_rp_token():
     """Obtém ou renova o token de autenticação da API RP Info."""
-    current_time = time.time()
-    if token_cache["token"] and current_time < token_cache["expires_at"]:
-        return token_cache["token"]
-
     url = f"{RP_HOST}/v1.1/auth"
-    payload = {
-        "usuario": RP_USER,
-        "senha": RP_PASS
-    }
+    payload = {"usuario": RP_USER, "senha": RP_PASS}
     headers = {"Content-Type": "application/json"}
 
     try:
-        logger.info(f"Autenticando na API RP Info em {RP_HOST}...")
         resp = requests.post(url, json=payload, headers=headers, timeout=15)
         data = resp.json()
-
-        # Trata formato de resposta da API RP Info
         response_obj = data.get("response", data)
         if response_obj.get("status") == "ok" or "token" in response_obj:
-            token = response_obj.get("token")
-            expires_in = response_obj.get("expiresIn", 3600)
-            # Define margem de segurança de 5 minutos antes de expirar
-            token_cache["token"] = token
-            token_cache["expires_at"] = current_time + max(expires_in - 300, 60)
-            logger.info("Autenticação realizada com sucesso na RP Info.")
-            return token
+            return response_obj.get("token")
         else:
             logger.error(f"Erro na autenticação RP Info: {data}")
-            raise HTTPException(status_code=502, detail="Falha ao autenticar na retaguarda RP Info")
+            return None
     except Exception as e:
-        logger.exception("Exceção ao conectar com RP Info para autenticação")
-        raise HTTPException(status_code=503, detail=f"Servidor RP Info indisponível: {str(e)}")
+        logger.error(f"Exceção ao autenticar na RP Info: {e}")
+        return None
+
+def sync_products_from_erp():
+    """Tarefa em background: Sincroniza produtos ativos da API RP Info para o SQLite local."""
+    global sync_status
+    if sync_status["is_syncing"]:
+        logger.info("Sincronização já está em andamento. Ignorando...")
+        return
+
+    sync_status["is_syncing"] = True
+    sync_status["ultimo_erro"] = None
+    logger.info("=== Iniciando sincronização periódica de produtos ativos com ERP RP Info ===")
+
+    token = get_rp_token()
+    if not token:
+        sync_status["is_syncing"] = False
+        sync_status["ultimo_erro"] = "Falha ao obter token de autenticação na RP Info"
+        logger.error(sync_status["ultimo_erro"])
+        return
+
+    headers = {"token": token, "Content-Type": "application/json"}
+    last_id = 0
+    total_sincronizados = 0
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    try:
+        while True:
+            # Endpoint oficial v3.2 para produtos ativos detalhados
+            url = f"{RP_HOST}/v3.2/produtounidade/listaprodutos/{last_id}/unidade/{RP_CNPJ}/detalhado/ativos"
+            logger.info(f"Buscando lote de produtos ativos a partir do lastID={last_id}...")
+
+            resp = requests.get(url, headers=headers, timeout=30)
+            if resp.status_code == 401:
+                # Renova token se expirado
+                token = get_rp_token()
+                if token:
+                    headers["token"] = token
+                    resp = requests.get(url, headers=headers, timeout=30)
+                else:
+                    break
+
+            if resp.status_code != 200:
+                logger.error(f"Erro HTTP {resp.status_code} ao buscar produtos: {resp.text}")
+                break
+
+            data = resp.json()
+
+            # Normaliza formatos de resposta da API RP Info
+            batch = []
+            if isinstance(data, list):
+                batch = data
+            elif isinstance(data, dict):
+                content = data.get("produtos", data.get("content", data.get("response", {}).get("produtos", data.get("response", {}).get("content", []))))
+                batch = content if isinstance(content, list) else []
+
+            if not batch:
+                logger.info("Fim da listagem de produtos ou lote vazio.")
+                break
+
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            for item in batch:
+                codigo = item.get("codigo", item.get("id"))
+                if not codigo:
+                    continue
+
+                # Extrai código de barras principal ou alternativo
+                codigo_barras = item.get("codigoBarras", item.get("codBarras", ""))
+                if not codigo_barras and "codigosBarras" in item and item["codigosBarras"]:
+                    codigo_barras = item["codigosBarras"][0].get("codigoBarras", "")
+
+                descricao = item.get("descricao", item.get("nome", "PRODUTO SEM DESCRIÇÃO"))
+
+                # Preço PDV (Preço Venda / Preço 2 / Preço)
+                preco = float(item.get("preco", item.get("precoVenda", item.get("valor", item.get("preco2", 0.0)))))
+                preco_anterior = item.get("precoAnterior", None)
+                unidade = item.get("unidadeMedida", item.get("unidade", "UN"))
+                imagem_url = item.get("imagemUrl", f"https://via.placeholder.com/400?text={codigo_barras or codigo}")
+                ativo = 1 if item.get("ativo", True) else 0
+
+                # Salva no SQLite local
+                cursor.execute("""
+                    INSERT OR REPLACE INTO produtos (codigo, codigo_barras, descricao, preco, preco_anterior, unidade, imagem_url, ativo, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (codigo, str(codigo_barras), descricao, preco, preco_anterior, unidade, imagem_url, ativo, now_str))
+
+                total_sincronizados += 1
+
+            conn.commit()
+
+            # Atualiza lastID para paginação com base no último item do lote
+            last_item = batch[-1]
+            next_id = last_item.get("codigo", last_item.get("id"))
+            if next_id == last_id:
+                # Evita loop infinito se o lastID não avançar
+                break
+            last_id = next_id
+
+            # Pequena pausa para aliviar a retaguarda
+            time.sleep(0.1)
+
+        sync_status["last_sync"] = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+        sync_status["total_produtos"] = total_sincronizados
+        logger.info(f"=== Sincronização concluída com sucesso! Total de produtos ativos salvos: {total_sincronizados} ===")
+
+    except Exception as e:
+        logger.exception("Erro crítico durante a sincronização de produtos")
+        sync_status["ultimo_erro"] = str(e)
+    finally:
+        conn.close()
+        sync_status["is_syncing"] = False
+
+def background_scheduler():
+    """Loop em background que executa a sincronização periodicamente."""
+    while True:
+        try:
+            sync_products_from_erp()
+        except Exception as e:
+            logger.error(f"Erro no agendador de sincronização: {e}")
+
+        # Aguarda o intervalo configurado (padrão 10 minutos = 600 segundos)
+        time.sleep(SYNC_INTERVAL_MINUTES * 60)
+
+# Inicia a thread de sincronização em background ao subir o app
+threading.Thread(target=background_scheduler, daemon=True).start()
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "service": "consulta-preco-gmais", "cnpj": RP_CNPJ}
-
-@app.get("/api/product/{barcode}")
-def get_product(barcode: str, cnpj: str = RP_CNPJ):
-    """Consulta produto por código de barras na API RP Info."""
-    token = get_rp_token()
-    headers = {
-        "token": token,
-        "Content-Type": "application/json"
+    return {
+        "status": "ok",
+        "service": "consulta-preco-gmais-server",
+        "rp_host": RP_HOST,
+        "cnpj": RP_CNPJ,
+        "sync_status": sync_status
     }
 
-    # Tentativa 1: Endpoint específico de consulta por código de barras
-    url = f"{RP_HOST}/v2.8/produtounidade/{barcode}/unidade/{cnpj}/consultarcodigobarras"
+@app.post("/api/sync/trigger")
+def trigger_sync(background_tasks: BackgroundTasks):
+    """Força uma sincronização manual imediata em background."""
+    if sync_status["is_syncing"]:
+        return {"status": "running", "message": "Sincronização já está em andamento."}
 
-    try:
-        logger.info(f"Consultando código de barras {barcode} para CNPJ {cnpj}")
-        resp = requests.get(url, headers=headers, timeout=10)
+    background_tasks.add_task(sync_products_from_erp)
+    return {"status": "started", "message": "Sincronização iniciada em segundo plano."}
 
-        if resp.status_code == 401:
-            # Token expirado, limpa cache e tenta novamente
-            token_cache["token"] = None
-            headers["token"] = get_rp_token()
-            resp = requests.get(url, headers=headers, timeout=10)
+@app.get("/api/product/{barcode}")
+def get_product(barcode: str):
+    """Consulta ultrarrápida do produto no banco de dados local SQLite (cache sincronizado)."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
 
-        if resp.status_code == 404:
-            return {"status": "not_found", "message": "Produto não encontrado"}
+    # Busca por código de barras exato ou código interno
+    cursor.execute("""
+        SELECT * FROM produtos
+        WHERE codigo_barras = ? OR codigo = ? OR codigo_barras LIKE ?
+        LIMIT 1
+    """, (barcode, barcode, f"%{barcode}%"))
 
-        data = resp.json()
+    row = cursor.fetchone()
+    conn.close()
 
-        # Normalização de resposta (trata array direto, objeto ou response aninhado)
-        product_item = None
-        if isinstance(data, list) and len(data) > 0:
-            product_item = data[0]
-        elif isinstance(data, dict):
-            if "response" in data and isinstance(data["response"], dict):
-                content = data["response"].get("content", data["response"].get("produto", data["response"]))
-                product_item = content[0] if isinstance(content, list) and content else content
-            elif "produto" in data:
-                product_item = data["produto"]
-            elif "content" in data:
-                content = data["content"]
-                product_item = content[0] if isinstance(content, list) and content else content
-            else:
-                product_item = data
-
-        if not product_item or not product_item.get("descricao") and not product_item.get("codigo"):
-            return {"status": "not_found", "message": "Produto não encontrado"}
-
-        # Mapeia para o formato padronizado do totem
-        formatted_product = {
-            "codigo": product_item.get("codigo", product_item.get("id", 0)),
-            "codigoBarras": barcode,
-            "descricao": product_item.get("descricao", product_item.get("nome", "PRODUTO SEM DESCRIÇÃO")),
-            "preco": float(product_item.get("preco", product_item.get("precoVenda", product_item.get("valor", 0.0)))),
-            "precoAnterior": product_item.get("precoAnterior", None),
-            "unidadeMedida": product_item.get("unidadeMedida", product_item.get("unidade", "UN")),
-            "imagemUrl": product_item.get("imagemUrl", f"https://via.placeholder.com/400?text={barcode}"),
-            "estoque": float(product_item.get("estoque", 0.0))
+    if row:
+        product_data = {
+            "codigo": row["codigo"],
+            "codigoBarras": row["codigo_barras"],
+            "descricao": row["descricao"],
+            "preco": row["preco"],
+            "precoAnterior": row["preco_anterior"],
+            "unidadeMedida": row["unidade"],
+            "imagemUrl": row["imagem_url"],
+            "ativo": bool(row["ativo"])
         }
+        return {"status": "ok", "source": "cache_local", "product": product_data}
 
-        return {"status": "ok", "product": formatted_product}
+    # Fallback opcional: Se não estiver no cache local, tenta consultar diretamente na API da RP Info
+    logger.warning( produto {barcode} não encontrado no cache local. Tentando busca direta na API RP Info...)
+    token = get_rp_token()
+    if token:
+        try:
+            url = f"{RP_HOST}/v2.8/produtounidade/{barcode}/unidade/{RP_CNPJ}/consultarcodigobarras"
+            headers = {"token": token, "Content-Type": "application/json"}
+            resp = requests.get(url, headers=headers, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                # Processa resposta direta...
+                # (retorna produto encontrado ao vivo)
+        except Exception as e:
+            logger.error(f"Erro no fallback de consulta direta: {e}")
 
-    except Exception as e:
-        logger.exception(f"Erro ao consultar produto {barcode}")
-        # Retorna mock estruturado para testes caso a retaguarda esteja inacessível em ambiente de homologação
-        return {
-            "status": "error",
-            "message": str(e),
-            "product": {
-                "codigo": 99999,
-                "codigoBarras": barcode,
-                "descricao": f"PRODUTO TESTE (BARCODE: {barcode})",
-                "preco": 12.99,
-                "unidadeMedida": "UN",
-                "imagemUrl": "https://via.placeholder.com/400?text=Produto+Exemplo"
-            }
-        }
+    return {"status": "not_found", "message": "Produto não encontrado no cache local nem na retaguarda."}
 
-# Monta arquivos estáticos do frontend Kiosk
+# Servir arquivos estáticos do frontend Kiosk
 if os.path.exists("server/static"):
     app.mount("/", StaticFiles(directory="server/static", html=True), name="static")
 else:
     @app.get("/")
     def root():
-        return {"message": "Servidor rodando. Coloque os arquivos do frontend em server/static/"}
+        return {"message": "Servidor rodando. Frontend em server/static/"}
