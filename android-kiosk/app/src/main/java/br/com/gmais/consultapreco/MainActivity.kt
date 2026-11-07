@@ -2,9 +2,11 @@ package br.com.gmais.consultapreco
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.View
+import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -27,7 +29,7 @@ class MainActivity : AppCompatActivity() {
         // Modo Imersivo Kiosk
         hideSystemUI()
 
-        // Solicitar permissão de câmera em tempo de execução
+        // Solicitar permissão de câmera
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_CODE)
         }
@@ -42,11 +44,18 @@ class MainActivity : AppCompatActivity() {
         settings.mediaPlaybackRequiresUserGesture = false
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         settings.cacheMode = WebSettings.LOAD_NO_CACHE
+        settings.javaScriptCanOpenWindowsAutomatically = true
+        settings.loadsImagesAutomatically = true
+
+        webView.isFocusable = true
+        webView.isFocusableInTouchMode = true
+
+        // Adicionar ponte JavaScript para controle nativo (Orientação e Câmera)
+        webView.addJavascriptInterface(WebAppInterface(this), "AndroidBridge")
 
         webView.webViewClient = WebViewClient()
         webView.webChromeClient = object : WebChromeClient() {
             override fun onPermissionRequest(request: PermissionRequest?) {
-                // Conceder permissões de câmera automaticamente solicitadas pelo WebView
                 request?.resources?.let { resources ->
                     request.grant(resources)
                 }
@@ -54,6 +63,26 @@ class MainActivity : AppCompatActivity() {
         }
 
         webView.loadUrl(serverUrl)
+    }
+
+    inner class WebAppInterface(private val activity: MainActivity) {
+        @JavascriptInterface
+        fun setOrientation(mode: String) {
+            activity.runOnUiThread {
+                if (mode == "retrato") {
+                    activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                } else {
+                    activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun notifyScanResult(barcode: String) {
+            activity.runOnUiThread {
+                webView.loadUrl("javascript:processBarcode('$barcode')")
+            }
+        }
     }
 
     private fun hideSystemUI() {

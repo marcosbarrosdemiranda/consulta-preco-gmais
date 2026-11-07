@@ -109,7 +109,7 @@
             <div class="space-y-2 pt-2">
                 <label class="text-xs font-bold text-slate-400 uppercase">Digite o Código de Barras:</label>
                 <div class="flex space-x-2">
-                    <input type="text" id="manual-barcode-input" placeholder="Ex: 7891000..." class="flex-grow bg-slate-900 border border-slate-700 px-4 py-3 rounded-xl text-white focus:outline-none focus:border-blue-500 font-bold text-lg">
+                    <input type="text" id="manual-barcode-input" placeholder="Ex: 7891000..." onkeydown="if(event.key==='Enter')submitManualBarcode()" class="flex-grow bg-slate-900 border border-slate-700 px-4 py-3 rounded-xl text-white focus:outline-none focus:border-blue-500 font-bold text-lg">
                     <button onclick="submitManualBarcode()" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl font-bold transition">Consultar</button>
                 </div>
             </div>
@@ -287,12 +287,14 @@
 
         function openCameraModal() {
             document.getElementById('camera-error').classList.add('hidden');
-            document.getElementById('manual-barcode-input').value = '';
+            const input = document.getElementById('manual-barcode-input');
+            input.value = '';
             document.getElementById('camera-modal').classList.remove('hidden');
             setTimeout(() => {
                 startCameraScanner();
-                document.getElementById('manual-barcode-input').focus();
-            }, 400);
+                input.focus();
+                input.click();
+            }, 300);
         }
 
         function closeCameraModal() {
