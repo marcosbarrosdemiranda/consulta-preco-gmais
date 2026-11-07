@@ -492,22 +492,33 @@ def admin_download_apk():
     apk_paths = [
         os.path.join(DATA_DIR, "gmais-kiosk.apk"),
         "server/data/gmais-kiosk.apk",
-        "data/gmais-kiosk.apk"
+        "data/gmais-kiosk.apk",
+        "gmais-kiosk.apk"
     ]
     target_apk = None
     for p in apk_paths:
-        if os.path.exists(p):
+        if os.path.exists(p) and os.path.getsize(p) > 1000:
             target_apk = p
             break
 
     if not target_apk:
-        raise HTTPException(status_code=404, detail="APK Kiosk não encontrado no servidor.")
+        fallback_path = os.path.join(DATA_DIR, "gmais-kiosk.apk")
+        os.makedirs(os.path.dirname(fallback_path) or ".", exist_ok=True)
+        if os.path.exists("server/data/gmais-kiosk.apk"):
+            import shutil
+            shutil.copy("server/data/gmais-kiosk.apk", fallback_path)
+            target_apk = fallback_path
+        else:
+            raise HTTPException(status_code=404, detail="APK Kiosk não encontrado no servidor.")
 
     return Response(
         content=open(target_apk, "rb").read(),
         media_type="application/vnd.android.package-archive",
         headers={"Content-Disposition": 'attachment; filename="gmais-kiosk.apk"'}
     )
+
+# Comentando ou substituindo a versao antiga se existir
+
 
 @app.get("/", response_class=HTMLResponse)
 def kiosk_home():
