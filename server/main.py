@@ -466,6 +466,49 @@ def admin_update_config(data: dict):
         SYNC_INTERVAL_MINUTES = int(data["sync_interval_minutes"])
     return {"status": "ok", "sync_interval_minutes": SYNC_INTERVAL_MINUTES}
 
+@app.post("/api/admin/generate-apk")
+def admin_generate_apk(data: dict):
+    server_ip = data.get("server_ip", "192.168.1.4")
+    main_activity_path = "android-kiosk/app/src/main/java/br/com/gmais/consultapreco/MainActivity.kt"
+    if os.path.exists(main_activity_path):
+        try:
+            with open(main_activity_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            import re
+            new_content = re.sub(r'private val serverUrl = ".*?"', f'private val serverUrl = "http://{server_ip}:{SERVER_PORT}"', content)
+            with open(main_activity_path, "w", encoding="utf-8") as f:
+                f.write(new_content)
+        except Exception as e:
+            logger.error(f"Erro ao atualizar MainActivity.kt: {e}")
+
+    return {
+        "status": "ok",
+        "message": f"APK configurado para http://{server_ip}:{SERVER_PORT}",
+        "download_url": "/api/admin/download-apk"
+    }
+
+@app.get("/api/admin/download-apk")
+def admin_download_apk():
+    apk_paths = [
+        os.path.join(DATA_DIR, "gmais-kiosk.apk"),
+        "server/data/gmais-kiosk.apk",
+        "data/gmais-kiosk.apk"
+    ]
+    target_apk = None
+    for p in apk_paths:
+        if os.path.exists(p):
+            target_apk = p
+            break
+
+    if not target_apk:
+        raise HTTPException(status_code=404, detail="APK Kiosk não encontrado no servidor.")
+
+    return Response(
+        content=open(target_apk, "rb").read(),
+        media_type="application/vnd.android.package-archive",
+        headers={"Content-Disposition": 'attachment; filename="gmais-kiosk.apk"'}
+    )
+
 @app.get("/", response_class=HTMLResponse)
 def kiosk_home():
     for p in [os.path.join("server", "static", "index.html"), os.path.join("static", "index.html")]:
