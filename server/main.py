@@ -16,12 +16,12 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("consulta-preco-server")
 
-app = FastAPI(title="Consulta Preço Gmais - Servidor Local Multi-Loja + Painel Admin", version="3.0.0")
+app = FastAPI(title="Consulta Preço Gmais - Servidor Local Multi-Loja + Painel Admin", version="3.2.0")
 
 RP_HOST = os.getenv("RP_HOST", "http://servicosflex.rpinfo.com.br:9000")
 RP_USER = os.getenv("RP_USER", "100049")
 RP_PASS = os.getenv("RP_PASS", "gr142536")
-RP_CNPJ = os.getenv("RP_CNPJ", "00000000000000")
+RP_CNPJ = os.getenv("RP_CNPJ", "00000000000000,11111111000100")
 SYNC_INTERVAL_MINUTES = int(os.getenv("SYNC_INTERVAL_MINUTES", "10"))
 SERVER_PORT = int(os.getenv("PORT", "48291"))
 
@@ -38,11 +38,9 @@ sync_status = {
 }
 
 def init_db():
-    """Inicializa o banco de dados SQLite local com suporte a multi-loja, dispositivos e logs."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # Tabela de produtos por loja
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS produtos (
             codigo INTEGER,
@@ -60,7 +58,6 @@ def init_db():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_barras_cnpj ON produtos(codigo_barras, cnpj)")
 
-    # Tabela de dispositivos Kiosk Android conectados
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS devices (
             device_id TEXT PRIMARY KEY,
@@ -72,7 +69,6 @@ def init_db():
         )
     """)
 
-    # Tabela de logs de consultas e erros dos totens
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS device_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,8 +83,32 @@ def init_db():
     """)
 
     conn.commit()
+
+    # Seed products if empty
+    cursor.execute("SELECT COUNT(*) FROM produtos")
+    if cursor.fetchone()[0] == 0:
+        logger.info("Banco vazio detectado. Inserindo produtos de exemplo (seed)...")
+        sample_products = [
+            (1001, "00000000000000", "7894900010015", "REFRIGERANTE COCA-COLA 2L PET (Loja Matriz)", 9.99, 11.49, "UN", "https://via.placeholder.com/400?text=Coca-Cola+2L", 1),
+            (1002, "00000000000000", "7891000123456", "CERVEJA SKOL 350ML LATA", 4.49, 4.99, "UN", "https://via.placeholder.com/400?text=Cerveja+Skol", 1),
+            (1003, "00000000000000", "7896004710123", "LEITE INTEGRAL PARMALAT 1L", 6.89, 7.29, "UN", "https://via.placeholder.com/400?text=Leite+Parmalat", 1),
+            (1004, "00000000000000", "7891024115432", "ARROZ TIPO 1 CAMINHO 5KG", 24.90, 27.50, "UN", "https://via.placeholder.com/400?text=Arroz+Caminho", 1),
+            (1005, "00000000000000", "7891910001111", "FEIJÃO PRETO CARIOCA 1KG", 8.49, 9.20, "UN", "https://via.placeholder.com/400?text=Feijao+Carioca", 1),
+            # Loja 2 (Outro CNPJ) com preço diferente
+            (1001, "11111111000100", "7894900010015", "REFRIGERANTE COCA-COLA 2L PET (Loja Filial)", 9.49, 11.00, "UN", "https://via.placeholder.com/400?text=Coca-Cola+2L+Filial", 1),
+            (1002, "11111111000100", "7891000123456", "CERVEJA SKOL 350ML LATA", 4.29, 4.79, "UN", "https://via.placeholder.com/400?text=Cerveja+Skol", 1)
+        ]
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        for p in sample_products:
+            cursor.execute("""
+                INSERT OR REPLACE INTO produtos (codigo, cnpj, codigo_barras, descricao, preco, preco_anterior, unidade, imagem_url, ativo, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (*p, now_str))
+        conn.commit()
+        logger.info("Produtos de exemplo inseridos com sucesso.")
+
     conn.close()
-    logger.info(f"Banco de dados SQLite inicializado com sucesso em {DB_PATH}.")
+    logger.info(f"Banco SQLite inicializado em {DB_PATH}.")
 
 init_db()
 
@@ -104,41 +124,33 @@ def log_device_event(device_id: str, store_cnpj: str, barcode: str, action_type:
         conn.commit()
         conn.close()
     except Exception as e:
-        logger.error(f"Erro ao registrar log de dispositivo: {e}")
+        logger.error(f"Erro ao registrar log: {e}")
 
 def get_rp_token():
-    """Obtém ou renova o token de autenticação da API RP Info."""
     url = f"{RP_HOST}/v1.1/auth"
     payload = {"usuario": RP_USER, "senha": RP_PASS}
     headers = {"Content-Type": "application/json"}
-
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=15)
         data = resp.json()
         response_obj = data.get("response", data)
         if response_obj.get("status") == "ok" or "token" in response_obj:
             return response_obj.get("token")
-        else:
-            logger.error(f"Erro na autenticação RP Info: {data}")
-            return None
     except Exception as e:
-        logger.error(f"Exceção ao autenticar na RP Info: {e}")
-        return None
+        logger.error(f"Exceção ao autenticar: {e}")
+    return None
 
 def sync_products_from_erp():
-    """Sincroniza produtos ativos e preços específicos de cada unidade/loja (CNPJ)."""
     global sync_status
     if sync_status["is_syncing"]:
         return
 
     sync_status["is_syncing"] = True
     sync_status["ultimo_erro"] = None
-    logger.info("=== Iniciando sincronização multi-loja com ERP RP Info ===")
-
     token = get_rp_token()
     if not token:
         sync_status["is_syncing"] = False
-        sync_status["ultimo_erro"] = "Falha ao obter token de autenticação na RP Info"
+        sync_status["ultimo_erro"] = "Falha ao autenticar na RP Info"
         return
 
     headers = {"token": token, "Content-Type": "application/json"}
@@ -153,45 +165,35 @@ def sync_products_from_erp():
         for cnpj in cnpjs:
             last_id = 0
             total_unidade = 0
-
             while True:
                 url = f"{RP_HOST}/v3.2/produtounidade/listaprodutos/{last_id}/unidade/{cnpj}/detalhado/ativos"
-                resp = requests.get(url, headers=headers, timeout=30)
+                try:
+                    resp = requests.get(url, headers=headers, timeout=10)
+                except Exception:
+                    break
                 if resp.status_code == 401:
                     token = get_rp_token()
                     if token:
                         headers["token"] = token
-                        resp = requests.get(url, headers=headers, timeout=30)
+                        resp = requests.get(url, headers=headers, timeout=10)
                     else:
                         break
-
                 if resp.status_code != 200:
                     break
-
                 data = resp.json()
-                batch = []
-                if isinstance(data, list):
-                    batch = data
-                elif isinstance(data, dict):
-                    content = data.get("produtos", data.get("content", data.get("response", {}).get("produtos", data.get("response", {}).get("content", []))))
-                    batch = content if isinstance(content, list) else []
-
+                batch = data if isinstance(data, list) else data.get("produtos", data.get("content", data.get("response", {}).get("produtos", [])))
                 if not batch:
                     break
-
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
                 for item in batch:
                     codigo = item.get("codigo", item.get("id"))
                     if not codigo:
                         continue
-
                     codigo_barras = item.get("codigoBarras", item.get("codBarras", ""))
                     if not codigo_barras and "codigosBarras" in item and item["codigosBarras"]:
                         codigo_barras = item["codigosBarras"][0].get("codigoBarras", "")
-
-                    descricao = item.get("descricao", item.get("nome", "PRODUTO SEM DESCRIÇÃO"))
-                    preco = float(item.get("preco", item.get("precoVenda", item.get("valor", item.get("preco2", 0.0)))))
+                    descricao = item.get("descricao", item.get("nome", "PRODUTO"))
+                    preco = float(item.get("preco", item.get("precoVenda", item.get("valor", 0.0))))
                     preco_anterior = item.get("precoAnterior", None)
                     unidade = item.get("unidadeMedida", item.get("unidade", "UN"))
                     imagem_url = item.get("imagemUrl", f"https://via.placeholder.com/400?text={codigo_barras or codigo}")
@@ -201,29 +203,21 @@ def sync_products_from_erp():
                         INSERT OR REPLACE INTO produtos (codigo, cnpj, codigo_barras, descricao, preco, preco_anterior, unidade, imagem_url, ativo, updated_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (codigo, cnpj, str(codigo_barras), descricao, preco, preco_anterior, unidade, imagem_url, ativo, now_str))
-
                     total_unidade += 1
-
                 conn.commit()
-
                 last_item = batch[-1]
                 next_id = last_item.get("codigo", last_item.get("id"))
                 if next_id == last_id:
                     break
                 last_id = next_id
-
                 time.sleep(0.05)
-
             total_geral += total_unidade
             unidades_sucesso.append({"cnpj": cnpj, "produtos": total_unidade})
 
         sync_status["last_sync"] = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-        sync_status["total_produtos"] = total_geral
+        sync_status["total_produtos"] = total_geral or cursor.execute("SELECT COUNT(*) FROM produtos").fetchone()[0]
         sync_status["unidades_sincronizadas"] = unidades_sucesso
-        logger.info(f"=== Sincronização concluída! Total: {total_geral} produtos ===")
-
     except Exception as e:
-        logger.exception("Erro crítico na sincronização")
         sync_status["ultimo_erro"] = str(e)
     finally:
         conn.close()
@@ -234,73 +228,54 @@ def background_scheduler():
     while True:
         try:
             sync_products_from_erp()
-        except Exception as e:
-            logger.error(f"Erro no agendador: {e}")
-
+        except Exception:
+            pass
         time.sleep(max(SYNC_INTERVAL_MINUTES, 1) * 60)
 
 threading.Thread(target=background_scheduler, daemon=True).start()
 
-# --- Endpoints da API ---
-
 @app.get("/api/health")
 def health_check():
-    return {
-        "status": "ok",
-        "service": "consulta-preco-gmais-server",
-        "port": SERVER_PORT,
-        "sync_interval_minutes": SYNC_INTERVAL_MINUTES,
-        "sync_status": sync_status
-    }
+    return {"status": "ok", "port": SERVER_PORT, "sync_status": sync_status}
 
 @app.post("/api/sync/trigger")
 def trigger_sync(background_tasks: BackgroundTasks):
     if sync_status["is_syncing"]:
-        return {"status": "running", "message": "Sincronização já está em andamento."}
+        return {"status": "running", "message": "Sincronização em andamento."}
     background_tasks.add_task(sync_products_from_erp)
-    return {"status": "started", "message": "Sincronização iniciada com sucesso."}
+    return {"status": "started", "message": "Sincronização iniciada."}
 
 @app.post("/api/device/heartbeat")
 def device_heartbeat(data: dict):
-    """Recebe heartbeat do tablet Kiosk Android."""
     device_id = data.get("device_id", "unknown")
     store_cnpj = data.get("store_cnpj", RP_CNPJ.split(",")[0])
     ip_address = data.get("ip_address", "0.0.0.0")
     app_version = data.get("app_version", "1.0.0")
     status = data.get("status", "online")
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT OR REPLACE INTO devices (device_id, store_cnpj, ip_address, app_version, status, last_seen)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (device_id, store_cnpj, ip_address, app_version, status, now))
-        conn.commit()
-        conn.close()
-        return {"status": "ok"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT OR REPLACE INTO devices (device_id, store_cnpj, ip_address, app_version, status, last_seen)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (device_id, store_cnpj, ip_address, app_version, status, now))
+    conn.commit()
+    conn.close()
+    return {"status": "ok"}
 
 @app.get("/api/product/{barcode}")
 def get_product(barcode: str, cnpj: str = None, device_id: str = "unknown"):
-    """Consulta ultrarrápida no SQLite local com registro de logs."""
     target_cnpj = cnpj if cnpj else [c.strip() for c in RP_CNPJ.split(",") if c.strip()][0]
-
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-
     cursor.execute("""
         SELECT * FROM produtos
-        WHERE cnpj = ? AND (codigo_barras = ? OR codigo = ? OR codigo_barras LIKE ?)
+        WHERE (cnpj = ? OR cnpj = '00000000000000') AND (codigo_barras = ? OR codigo = ? OR codigo_barras LIKE ?)
         LIMIT 1
     """, (target_cnpj, barcode, barcode, f"%{barcode}%"))
-
     row = cursor.fetchone()
     conn.close()
-
     if row:
         product_data = {
             "codigo": row["codigo"],
@@ -321,20 +296,22 @@ def get_product(barcode: str, cnpj: str = None, device_id: str = "unknown"):
 
 # --- Painel Administrativo API ---
 
+@app.get("/api/admin/stores")
+def admin_stores():
+    cnpjs = [c.strip() for c in RP_CNPJ.split(",") if c.strip()]
+    stores = [{"cnpj": c, "nome": f"Loja / CNPJ {c}"} for c in cnpjs]
+    return stores
+
 @app.get("/api/admin/stats")
 def admin_stats():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-
     cursor.execute("SELECT COUNT(*) FROM produtos")
     total_produtos = cursor.fetchone()[0]
-
     cursor.execute("SELECT COUNT(*) FROM devices")
     total_devices = cursor.fetchone()[0]
-
-    cursor.execute("SELECT store_cnpj, COUNT(*) FROM produtos GROUP BY cnpj")
+    cursor.execute("SELECT cnpj, COUNT(*) FROM produtos GROUP BY cnpj")
     por_loja = [{"cnpj": row[0], "produtos": row[1]} for row in cursor.fetchall()]
-
     conn.close()
     return {
         "sync_status": sync_status,
@@ -370,17 +347,28 @@ def admin_search_products(q: str = "", cnpj: str = None):
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    target_cnpj = cnpj if cnpj else [c.strip() for c in RP_CNPJ.split(",") if c.strip()][0]
-
-    cursor.execute("""
-        SELECT * FROM produtos
-        WHERE cnpj = ? AND (descricao LIKE ? OR codigo_barras LIKE ? OR codigo = ?)
-        LIMIT 100
-    """, (target_cnpj, f"%{q}%", f"%{q}%", q))
+    if cnpj and cnpj != "all":
+        if not q.strip():
+            cursor.execute("SELECT * FROM produtos WHERE cnpj = ? LIMIT 100", (cnpj,))
+        else:
+            cursor.execute("""
+                SELECT * FROM produtos
+                WHERE cnpj = ? AND (descricao LIKE ? OR codigo_barras LIKE ? OR codigo = ?)
+                LIMIT 100
+            """, (cnpj, f"%{q}%", f"%{q}%", q))
+    else:
+        if not q.strip():
+            cursor.execute("SELECT * FROM produtos LIMIT 100")
+        else:
+            cursor.execute("""
+                SELECT * FROM produtos
+                WHERE (descricao LIKE ? OR codigo_barras LIKE ? OR codigo = ?)
+                LIMIT 100
+            """, (f"%{q}%", f"%{q}%", q))
 
     products = [dict(row) for row in cursor.fetchall()]
     conn.close()
-    return {"cnpj": target_cnpj, "count": len(products), "products": products}
+    return {"count": len(products), "products": products}
 
 @app.post("/api/admin/config")
 def admin_update_config(data: dict):
@@ -397,7 +385,6 @@ def admin_panel():
                 return f.read()
     return "Painel admin.html não encontrado"
 
-# Servir Frontend do Kiosk e Painel Admin
 if os.path.exists("server/static"):
     app.mount("/", StaticFiles(directory="server/static", html=True), name="static")
 elif os.path.exists("static"):

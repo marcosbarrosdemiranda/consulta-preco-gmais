@@ -11,7 +11,7 @@
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col">
 
     <!-- Header -->
-    <header class="bg-slate-800 border-b border-slate-700 px-8 py-4 flex justify-between items-center shadow-md">
+    <header class="bg-slate-800 border-b border-slate-700 px-8 py-4 flex flex-wrap justify-between items-center shadow-md gap-4">
         <div class="flex items-center space-x-4">
             <div class="bg-blue-600 text-white font-extrabold text-xl px-4 py-2 rounded-xl">GMAIS</div>
             <div>
@@ -19,6 +19,15 @@
                 <p class="text-xs text-slate-400">Gerenciamento de Servidor Local & Dispositivos</p>
             </div>
         </div>
+
+        <!-- Seletor de Loja Global -->
+        <div class="flex items-center space-x-3 bg-slate-900/80 border border-slate-700 px-4 py-2 rounded-xl">
+            <label for="global-store-select" class="text-xs font-bold text-slate-300 uppercase">Loja / Unidade:</label>
+            <select id="global-store-select" onchange="onStoreChange()" class="bg-slate-800 text-white text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-600 focus:outline-none focus:border-blue-500">
+                <option value="all">Todas as Lojas</option>
+            </select>
+        </div>
+
         <div class="flex items-center space-x-3">
             <button onclick="triggerSync()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow transition flex items-center space-x-2">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
@@ -47,7 +56,7 @@
                 <p class="text-xs text-slate-400 uppercase font-semibold">Intervalo de Sincronização</p>
                 <div class="flex items-center space-x-2 mt-2">
                     <input id="input-sync-interval" type="number" class="bg-slate-900 border border-slate-700 text-white px-3 py-1 rounded w-20 text-center font-bold text-lg" value="10">
-                    <span class="text-sm text-slate-400">minutos</span>
+                    <span class="text-sm text-slate-400">min</span>
                     <button onclick="saveConfig()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-2 rounded font-semibold">Salvar</button>
                 </div>
             </div>
@@ -56,7 +65,7 @@
                     <p class="text-xs text-slate-400 uppercase font-semibold">Status do Servidor</p>
                     <div class="flex items-center space-x-2 mt-2">
                         <span class="h-3 w-3 rounded-full bg-emerald-500 animate-pulse"></span>
-                        <span id="server-status-text" class="text-sm font-bold text-emerald-400">Online (Porta 48291)</span>
+                        <span class="text-sm font-bold text-emerald-400">Online (Porta 48291)</span>
                     </div>
                 </div>
                 <p class="text-xs text-slate-500 mt-4">Banco SQLite Multi-Loja Ativo</p>
@@ -69,8 +78,8 @@
             <!-- Dispositivos Conectados -->
             <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow flex flex-col">
                 <h2 class="text-lg font-bold text-white mb-4 flex items-center justify-between">
-                    <span>Dispositivos Android Conectados (Por Loja)</span>
-                    <span id="badge-devices-count" class="bg-blue-500/20 text-blue-400 text-xs px-2.5 py-1 rounded-full">0 online</span>
+                    <span>Dispositivos Android Conectados</span>
+                    <span id="badge-devices-count" class="bg-blue-500/20 text-blue-400 text-xs px-2.5 py-1 rounded-full">0 conectados</span>
                 </h2>
                 <div class="overflow-x-auto flex-grow">
                     <table class="w-full text-left text-xs">
@@ -84,7 +93,7 @@
                             </tr>
                         </thead>
                         <tbody id="devices-table-body" class="divide-y divide-slate-700/50">
-                            <tr><td colspan="5" class="p-4 text-center text-slate-500">Nenhum totem conectado no momento.</td></tr>
+                            <tr><td colspan="5" class="p-4 text-center text-slate-500">Nenhum totem conectado.</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -94,7 +103,7 @@
             <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow flex flex-col">
                 <h2 class="text-lg font-bold text-white mb-4">Consulta Direta ao Cache Local (Verificar Preços)</h2>
                 <div class="flex space-x-2 mb-4">
-                    <input id="search-input" type="text" placeholder="Digite o nome, EAN ou código do produto..." class="flex-grow bg-slate-900 border border-slate-700 px-4 py-2 rounded-xl text-sm focus:outline-none focus:border-blue-500">
+                    <input id="search-input" type="text" placeholder="Digite nome, EAN (ex: 7894900010015) ou código..." class="flex-grow bg-slate-900 border border-slate-700 px-4 py-2 rounded-xl text-sm focus:outline-none focus:border-blue-500" onkeydown="if(event.key==='Enter') searchProducts()">
                     <button onclick="searchProducts()" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-xl text-sm font-semibold">Buscar</button>
                 </div>
                 <div class="overflow-x-auto flex-grow max-h-60 overflow-y-auto">
@@ -109,7 +118,7 @@
                             </tr>
                         </thead>
                         <tbody id="search-results-body" class="divide-y divide-slate-700/50">
-                            <tr><td colspan="5" class="p-4 text-center text-slate-500">Digite algo para pesquisar no banco local.</td></tr>
+                            <tr><td colspan="5" class="p-4 text-center text-slate-500">Digite algo ou clique em Buscar.</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -134,7 +143,7 @@
                         </tr>
                     </thead>
                     <tbody id="logs-table-body" class="divide-y divide-slate-700/50">
-                        <tr><td colspan="7" class="p-4 text-center text-slate-500">Nenhum log registrado ainda.</td></tr>
+                        <tr><td colspan="7" class="p-4 text-center text-slate-500">Nenhum log registrado.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -143,6 +152,30 @@
     </main>
 
     <script>
+        let selectedStore = "all";
+
+        async function loadStores() {
+            try {
+                const res = await fetch('/api/admin/stores');
+                const stores = await res.json();
+                const select = document.getElementById('global-store-select');
+
+                let html = '<option value="all">Todas as Lojas</option>';
+                stores.forEach(s => {
+                    html += `<option value="${s.cnpj}">${s.nome} (${s.cnpj})</option>`;
+                });
+                select.innerHTML = html;
+            } catch (err) {
+                console.error("Erro ao carregar lojas:", err);
+            }
+        }
+
+        function onStoreChange() {
+            selectedStore = document.getElementById('global-store-select').value;
+            searchProducts();
+            loadDashboard();
+        }
+
         async function loadDashboard() {
             try {
                 const statsRes = await fetch('/api/admin/stats');
@@ -159,10 +192,13 @@
                 const devicesRes = await fetch('/api/admin/devices');
                 const devices = await devicesRes.json();
                 const devTable = document.getElementById('devices-table-body');
-                document.getElementById('badge-devices-count').innerText = `${devices.length} conectados`;
 
-                if (devices.length > 0) {
-                    devTable.innerHTML = devices.map(d => `
+                // Filtra por loja selecionada se não for 'all'
+                const filteredDevices = selectedStore === 'all' ? devices : devices.filter(d => d.store_cnpj === selectedStore);
+                document.getElementById('badge-devices-count').innerText = `${filteredDevices.length} conectados`;
+
+                if (filteredDevices.length > 0) {
+                    devTable.innerHTML = filteredDevices.map(d => `
                         <tr class="hover:bg-slate-700/40">
                             <td class="p-3 font-mono font-bold text-blue-400">${d.device_id}</td>
                             <td class="p-3 font-mono">${d.store_cnpj}</td>
@@ -171,14 +207,17 @@
                             <td class="p-3 text-slate-400">${d.last_seen}</td>
                         </tr>
                     `).join('');
+                } else {
+                    devTable.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-500">Nenhum totem conectado nesta loja.</td></tr>`;
                 }
 
                 const logsRes = await fetch('/api/admin/logs?limit=50');
                 const logs = await logsRes.json();
+                const filteredLogs = selectedStore === 'all' ? logs : logs.filter(l => l.store_cnpj === selectedStore);
                 const logsTable = document.getElementById('logs-table-body');
 
-                if (logs.length > 0) {
-                    logsTable.innerHTML = logs.map(l => `
+                if (filteredLogs.length > 0) {
+                    logsTable.innerHTML = filteredLogs.map(l => `
                         <tr class="hover:bg-slate-700/40">
                             <td class="p-3 text-slate-400">${l.created_at}</td>
                             <td class="p-3 font-mono text-blue-400">${l.device_id}</td>
@@ -189,10 +228,38 @@
                             <td class="p-3 text-slate-300">${l.message}</td>
                         </tr>
                     `).join('');
+                } else {
+                    logsTable.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-500">Nenhum log para esta loja.</td></tr>`;
                 }
 
             } catch (err) {
                 console.error("Erro ao carregar dashboard:", err);
+            }
+        }
+
+        async function searchProducts() {
+            const query = document.getElementById('search-input').value;
+            const tbody = document.getElementById('search-results-body');
+            try {
+                const url = `/api/admin/products/search?q=${encodeURIComponent(query)}&cnpj=${selectedStore}`;
+                const res = await fetch(url);
+                const data = await res.json();
+
+                if (data.products && data.products.length > 0) {
+                    tbody.innerHTML = data.products.map(p => `
+                        <tr class="hover:bg-slate-700/40">
+                            <td class="p-2 font-mono">${p.codigo}</td>
+                            <td class="p-2 font-mono text-blue-400">${p.codigo_barras}</td>
+                            <td class="p-2 font-bold">${p.descricao}</td>
+                            <td class="p-2 text-emerald-400 font-bold">R$ ${p.preco.toFixed(2).replace('.', ',')}</td>
+                            <td class="p-2 font-mono text-slate-400">${p.cnpj}</td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-500">Nenhum produto encontrado.</td></tr>`;
+                }
+            } catch (err) {
+                console.error(err);
             }
         }
 
@@ -223,34 +290,15 @@
             }
         }
 
-        async function searchProducts() {
-            const query = document.getElementById('search-input').value;
-            const tbody = document.getElementById('search-results-body');
-            try {
-                const res = await fetch(`/api/admin/products/search?q=${encodeURIComponent(query)}`);
-                const data = await res.json();
-
-                if (data.products && data.products.length > 0) {
-                    tbody.innerHTML = data.products.map(p => `
-                        <tr class="hover:bg-slate-700/40">
-                            <td class="p-2 font-mono">${p.codigo}</td>
-                            <td class="p-2 font-mono text-blue-400">${p.codigo_barras}</td>
-                            <td class="p-2 font-bold">${p.descricao}</td>
-                            <td class="p-2 text-emerald-400 font-bold">R$ ${p.preco.toFixed(2).replace('.', ',')}</td>
-                            <td class="p-2 font-mono text-slate-400">${p.cnpj}</td>
-                        </tr>
-                    `).join('');
-                } else {
-                    tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-500">Nenhum produto encontrado.</td></tr>`;
-                }
-            } catch (err) {
-                console.error(err);
-            }
+        // Inicialização
+        async function init() {
+            await loadStores();
+            await loadDashboard();
+            await searchProducts();
         }
 
-        // Auto refresh stats every 5 seconds
         setInterval(loadDashboard, 5000);
-        loadDashboard();
+        init();
     </script>
 </body>
 </html>
