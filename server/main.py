@@ -18,7 +18,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("consulta-preco-server")
 
-app = FastAPI(title="Consulta Preço Gmais - Servidor Local Multi-Loja + Painel Admin", version="3.7.0")
+app = FastAPI(title="Consulta Preço Gmais - Servidor Local Multi-Loja + Painel Admin", version="3.8.0")
 
 RP_HOST = os.getenv("RP_HOST", "http://servicosflex.rpinfo.com.br:9000")
 RP_USER = os.getenv("RP_USER", "100049")
@@ -199,6 +199,15 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_barras_cnpj ON produtos(codigo_barras, cnpj)")
 
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS product_images (
+            codigo INTEGER PRIMARY KEY,
+            image_data BLOB,
+            media_type TEXT,
+            updated_at TEXT
+        )
+    """)
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS devices (
             device_id TEXT PRIMARY KEY,
             store_cnpj TEXT,
@@ -288,15 +297,26 @@ def device_heartbeat(data: dict):
 
 @app.get("/api/product-image/{codigo}/{cnpj}")
 def get_product_image(codigo: int, cnpj: str):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT image_data, media_type FROM product_images WHERE codigo = ?", (codigo,))
+    row = cursor.fetchone()
+    if row and row[0]:
+        conn.close()
+        return Response(content=row[0], media_type=row[1] or "image/png")
+
     token = get_rp_token()
     if not token:
+        conn.close()
         return Response(status_code=404)
-    headers = {"token": token, "Content-Type": "application/json"}
 
-    # Try requested cnpj first, then fallback to ALLOWED_CNPJS[0]
+    headers = {"token": token, "Content-Type": "application/json"}
     try_cnpjs = [cnpj, ALLOWED_CNPJS[0]]
     if cnpj == ALLOWED_CNPJS[0]:
         try_cnpjs = [ALLOWED_CNPJS[0]]
+
+    image_bytes = None
+    media_type = "image/png"
 
     for c in try_cnpjs:
         try:
@@ -315,10 +335,20 @@ def get_product_image(codigo: int, cnpj: str):
                     except:
                         raw = b
                     media_type = f"image/{img_type}" if img_type in ["png", "jpeg", "jpg"] else "image/png"
-                    return Response(content=raw, media_type=media_type)
+                    image_bytes = raw
+                    break
         except Exception as e:
             logger.error(f"Erro ao buscar imagem do produto {codigo} na unidade {c}: {e}")
 
+    if image_bytes:
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute("INSERT OR REPLACE INTO product_images (codigo, image_data, media_type, updated_at) VALUES (?, ?, ?, ?)",
+                       (codigo, image_bytes, media_type, now_str))
+        conn.commit()
+        conn.close()
+        return Response(content=image_bytes, media_type=media_type)
+
+    conn.close()
     return Response(status_code=404)
 
 @app.get("/api/product/{barcode}")
