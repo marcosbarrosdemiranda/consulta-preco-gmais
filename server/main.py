@@ -389,13 +389,19 @@ def admin_stores():
     return get_sales_units()
 
 @app.get("/api/admin/stats")
-def admin_stats():
+def admin_stats(cnpj: str = None):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM produtos")
-    total_produtos = cursor.fetchone()[0]
-    cursor.execute("SELECT COUNT(*) FROM devices")
-    total_devices = cursor.fetchone()[0]
+    if cnpj and cnpj != "all":
+        cursor.execute("SELECT COUNT(*) FROM produtos WHERE cnpj = ?", (cnpj,))
+        total_produtos = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM devices WHERE store_cnpj = ?", (cnpj,))
+        total_devices = cursor.fetchone()[0]
+    else:
+        cursor.execute("SELECT COUNT(*) FROM produtos")
+        total_produtos = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM devices")
+        total_devices = cursor.fetchone()[0]
     cursor.execute("SELECT cnpj, COUNT(*) FROM produtos GROUP BY cnpj")
     por_loja = [{"cnpj": row[0], "produtos": row[1]} for row in cursor.fetchall()]
     conn.close()
@@ -408,11 +414,14 @@ def admin_stats():
     }
 
 @app.get("/api/admin/devices")
-def admin_devices():
+def admin_devices(cnpj: str = None):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM devices ORDER BY last_seen DESC")
+    if cnpj and cnpj != "all":
+        cursor.execute("SELECT * FROM devices WHERE store_cnpj = ? ORDER BY last_seen DESC", (cnpj,))
+    else:
+        cursor.execute("SELECT * FROM devices ORDER BY last_seen DESC")
     devices = [dict(row) for row in cursor.fetchall()]
     conn.close()
     return devices

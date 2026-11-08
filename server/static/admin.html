@@ -217,12 +217,14 @@
 
         function onGlobalStoreChange() {
             selectedStore = document.getElementById('global-store-select').value;
+            document.getElementById('search-store-select').value = selectedStore;
             loadDashboard();
+            searchProducts();
         }
 
         async function loadDashboard() {
             try {
-                const statsRes = await fetch('/api/admin/stats');
+                const statsRes = await fetch(`/api/admin/stats?cnpj=${selectedStore}`);
                 const stats = await statsRes.json();
 
                 document.getElementById('stat-total-prod').innerText = stats.total_produtos.toLocaleString();
@@ -233,15 +235,14 @@
                     document.getElementById('stat-last-sync').innerText = `Última sync: ${stats.sync_status.last_sync}`;
                 }
 
-                const devicesRes = await fetch('/api/admin/devices');
+                const devicesRes = await fetch(`/api/admin/devices?cnpj=${selectedStore}`);
                 const devices = await devicesRes.json();
                 const devTable = document.getElementById('devices-table-body');
 
-                const filteredDevices = selectedStore === 'all' ? devices : devices.filter(d => d.store_cnpj === selectedStore);
-                document.getElementById('badge-devices-count').innerText = `${filteredDevices.length} conectados`;
+                document.getElementById('badge-devices-count').innerText = `${devices.length} conectados`;
 
-                if (filteredDevices.length > 0) {
-                    devTable.innerHTML = filteredDevices.map(d => `
+                if (devices.length > 0) {
+                    devTable.innerHTML = devices.map(d => `
                         <tr class="hover:bg-slate-700/40">
                             <td class="p-3 font-mono font-bold text-blue-400">${d.device_id}</td>
                             <td class="p-3 font-mono">${d.store_cnpj}</td>
