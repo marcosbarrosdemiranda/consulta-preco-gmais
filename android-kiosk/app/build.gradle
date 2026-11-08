@@ -3,6 +3,29 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+def versionPropertiesFile = file('version.properties')
+Properties versionProps = new Properties()
+if (versionPropertiesFile.exists()) {
+    versionProps.load(new FileInputStream(versionPropertiesFile))
+}
+
+int major = versionProps.getProperty("VERSION_MAJOR", "1").toInteger()
+int minor = versionProps.getProperty("VERSION_MINOR", "0").toInteger()
+int patch = versionProps.getProperty("VERSION_PATCH", "0").toInteger()
+int buildCode = versionProps.getProperty("VERSION_CODE", "1").toInteger()
+
+// Auto-increment patch and versionCode on every build
+patch++
+buildCode++
+
+versionProps.setProperty("VERSION_MAJOR", major.toString())
+versionProps.setProperty("VERSION_MINOR", minor.toString())
+versionProps.setProperty("VERSION_PATCH", patch.toString())
+versionProps.setProperty("VERSION_CODE", buildCode.toString())
+versionProps.store(new FileOutputStream(versionPropertiesFile), null)
+
+String computedVersionName = "${major}.${minor}.${patch}"
+
 android {
     namespace 'br.com.gmais.consultapreco'
     compileSdk 34
@@ -11,8 +34,8 @@ android {
         applicationId "br.com.gmais.consultapreco"
         minSdk 24
         targetSdk 34
-        versionCode 1
-        versionName "1.0.0"
+        versionCode buildCode
+        versionName computedVersionName
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
