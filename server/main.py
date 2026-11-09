@@ -41,19 +41,38 @@ sync_status = {
     "ultimo_erro": None
 }
 
-def get_rp_token():
-    url = f"{RP_HOST}/v1.1/auth"
-    payload = {"usuario": RP_USER, "senha": RP_PASS}
-    headers = {"Content-Type": "application/json"}
-    try:
-        resp = requests.post(url, json=payload, headers=headers, timeout=15)
-        data = resp.json()
-        response_obj = data.get("response", data)
-        if response_obj.get("status") == "ok" or "token" in response_obj:
-            return response_obj.get("token")
-    except Exception as e:
-        logger.error(f"Exceção ao autenticar: {e}")
-    return None
+_cached_token = None
+_token_expires_at = 0.0
+_token_lock = threading.Lock()
+
+def get_rp_token(force_new: bool = False):
+    global _cached_token, _token_expires_at
+    with _token_lock:
+        now = time.time()
+        if not force_new and _cached_token and now < (_token_expires_at - 300):
+            return _cached_token
+
+        url = f"{RP_HOST}/v1.1/auth"
+        payload = {"usuario": RP_USER, "senha": RP_PASS}
+        headers = {"Content-Type": "application/json"}
+        try:
+            resp = requests.post(url, json=payload, headers=headers, timeout=15)
+            data = resp.json()
+            response_obj = data.get("response", data)
+            if response_obj.get("status") == "ok" or "token" in response_obj:
+                token = response_obj.get("token")
+                expires_in = response_obj.get("expiresIn", 3600)
+                if isinstance(expires_in, int) and expires_in < 100:
+                    expires_in = expires_in * 60
+                elif not expires_in:
+                    expires_in = 3600
+                _cached_token = token
+                _token_expires_at = time.time() + float(expires_in)
+                logger.info(f"Token RP Info obtido/renovado com sucesso. Expira em {expires_in}s.")
+                return token
+        except Exception as e:
+            logger.error(f"Exceção ao autenticar: {e}")
+        return _cached_token
 
 def get_sales_units():
     token = get_rp_token()
@@ -113,7 +132,7 @@ def sync_products_from_erp():
                 except Exception:
                     break
                 if resp.status_code == 401:
-                    token = get_rp_token()
+                    token = get_rp_token(force_new=True)
                     if token:
                         headers["token"] = token
                         resp = requests.get(url, headers=headers, timeout=15)
